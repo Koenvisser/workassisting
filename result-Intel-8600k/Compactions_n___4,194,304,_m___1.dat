@@ -1,0 +1,8 @@
+# Benchmark Compactions (n = 4,194,304, m = 1)
+# Speedup compared to a sequential implementation.
+# NCPU	Outer parallelism	Inner parallelism	OpenMP	Work assisting (our)
+1	0.9733783	1.0733926	1.0336453	1.0827945
+2	0.9719206	1.1018676	1.3677555	1.2187793
+3	0.8847989	1.584376	1.6550845	1.7101449
+4	0.8708487	1.1548042	1.6404424	2.083467
+6	0.8832936	1.0507995	0.53333336	1.8893741

@@ -1,0 +1,8 @@
+# Benchmark LUD (n = 512, m = 32)
+# Speedup compared to a sequential implementation.
+# NCPU	Work stealing	OpenMP (loops)	OpenMP (tasks)	Work assisting (our)
+1	0.9056513	0.9038583	1.0027305	1.080809
+2	1.6160108	0.75460213	1.4025512	2.138433
+3	2.3522925	0.572072	2.5485456	3.1114702
+4	3.1020167	0.59992254	2.193877	3.8623364
+6	3.72006	0.0967055	3.8135083	4.8416324

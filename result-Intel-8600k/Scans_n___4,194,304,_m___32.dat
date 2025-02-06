@@ -1,0 +1,8 @@
+# Benchmark Scans (n = 4,194,304, m = 32)
+# Speedup compared to a sequential implementation.
+# NCPU	Outer parallelism	Inner parallelism	OpenMP	Work assisting (our)
+1	1.0518035	1.0513608	0.7404756	1.0080973
+2	1.2171267	1.093152	1.058807	1.1982782
+3	1.3352749	1.1683232	1.0679665	1.2762338
+4	1.2110568	1.1857951	0.9497622	1.271204
+6	1.36662	0.93676716	0.66550034	1.2788135
