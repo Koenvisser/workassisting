@@ -7,6 +7,7 @@ use crate::utils;
 use crate::utils::ptr::AtomicTaggedPtr;
 use crate::utils::ptr::TaggedPtr;
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
+use rand::Rng;
 
 pub struct Workers<'a> {
   is_finished: &'a AtomicBool,
@@ -170,21 +171,28 @@ impl<'a> Workers<'a> {
       let mut signal = EmptySignal{ pointer: &self.activities[other_index], task, state: EmptySignalState::Assist };
 
       // Claim the first chunk
-      let current_index = task.work_index.fetch_add(1, Ordering::Acquire);
+      while let Ok(work_indexes) = task.work_indexes.read() {
+        if work_indexes.len() == 0 {
+            break;
+        }
+    
+        let random_index = rand::rng().random_range(0..work_indexes.len());
+        let current_index = work_indexes[random_index].load(Ordering::Acquire);
+        if current_index < task.work_size[random_index] {
+            self.call_task(task, signal, current_index);
+            return true;
+        }
+    }
 
-      // Early out.
-      if current_index >= task.work_size {
-        signal.task_empty();
-        self.end_task(task);
-        return true;
-      }
-      self.call_task(task, signal, current_index);
+      // The task is empty.
+      signal.task_empty();
+      self.end_task(task);
       return true;
     }
   }
 
   fn start_task(&self, task: Task, thread_index: usize) {
-    if task.work_size == 0 {
+    if task.work_size.is_empty() {
       // This task doesn't have data parallelism.
       // Hence task.work doesn't need to be called,
       // only task.finish.
@@ -215,8 +223,12 @@ impl<'a> Workers<'a> {
   // Calls the work function of a task, and calls end_task afterwards
   fn call_task(&self, task: *const TaskObject<()>, signal: EmptySignal, first_index: u32) {
     let task_ref = unsafe { &*task };
-    (task_ref.work.unwrap())(self, task, LoopArguments{ work_size: task_ref.work_size, work_index: &task_ref.work_index, empty_signal: signal, first_index });
+    println!("Call: {} {:?}", first_index, task_ref.work_indexes.read().unwrap());
+    let work_indexes_len = task_ref.work_indexes.read().unwrap().len();
+    let random_index = rand::rng().random_range(0..work_indexes_len);
+    (task_ref.work.unwrap())(self, task, LoopArguments{ work_size: &task_ref.work_size, work_indexes: &task_ref.work_indexes, empty_signal: signal, first_index, current_index: random_index });
     self.end_task(task);
+    
   }
 
   fn end_task(&self, task: *const TaskObject<()>) {
