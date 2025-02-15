@@ -27,6 +27,7 @@ pub struct TaskObject<T> {
   // Hence we can run the finish function and deallocate the task.
   pub(super) active_threads: AtomicI32,
   pub(super) work_indexes: RwLock<Vec<AtomicU32>>,
+  pub(super) work_indexes_index: AtomicU32,
   pub(super) work_size: Vec<u32>,
   pub data: T,
 }
@@ -54,7 +55,6 @@ fn distribute(x: u32, n: usize) -> Vec<u32> {
   for i in 0..remainder {
       result[i] += 1;
   }
-
   result
 }
 
@@ -69,13 +69,12 @@ impl Task {
     let mut work_size = distribute(work_size, atomics);
 
     let mut index = 0;
-    let mut work_indexes: Vec<AtomicU32> = (0..atomics).map(|i| {
+    let work_indexes: Vec<AtomicU32> = (0..atomics).map(|i| {
       let result = AtomicU32::new(index);
       index += work_size[i];
       work_size[i] = index;
       result
     }).collect();
-    work_indexes[0] = AtomicU32::new(1);
 
     let task_box: Box<TaskObject<T>> = Box::new(TaskObject{
       work: Some(work),
@@ -83,6 +82,7 @@ impl Task {
       work_size,
       active_threads: AtomicI32::new(0),
       work_indexes: RwLock::new(work_indexes),
+      work_indexes_index: AtomicU32::new(0),
       data
     });
     Task(Box::into_raw(task_box) as *mut TaskObject<()>)
@@ -98,6 +98,7 @@ impl Task {
       work_size: vec![],
       active_threads: AtomicI32::new(0),
       work_indexes: RwLock::new(vec![]),
+      work_indexes_index: AtomicU32::new(0),
       data
     });
     Task(Box::into_raw(task_box) as *mut TaskObject<()>)
@@ -151,6 +152,7 @@ impl<T> TaskObject<T> {
 pub struct LoopArguments<'a> {
   pub work_size: &'a Vec<u32>,
   pub work_indexes: &'a RwLock<Vec<AtomicU32>>,
+  pub work_indexes_index: &'a AtomicU32,
   pub empty_signal: EmptySignal<'a>,
   pub first_index: u32,
   pub current_index: usize,
