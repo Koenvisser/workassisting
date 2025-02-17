@@ -167,42 +167,9 @@ impl<'a> Workers<'a> {
 
       // We can assist this thread
       let task = unsafe { &*activity.ptr() };
-      let mut signal = EmptySignal{ pointer: &self.activities[other_index], task, state: EmptySignalState::Assist };
+      let signal = EmptySignal{ pointer: &self.activities[other_index], task, state: EmptySignalState::Assist };
 
-      // Claim the first chunk
-    //   while let Ok(work_indexes) = task.work_indexes.read() {
-    //     if work_indexes.len() == 0 {
-    //         break;
-    //     }
-    
-    //     let random_index = rand::rng().random_range(0..work_indexes.len());
-    //     let current_index = work_indexes[random_index].load(Ordering::Acquire);
-    //     if current_index < task.work_size[random_index] {
-    //         self.call_task(task, signal, current_index);
-    //         return true;
-    //     }
-    // }
-      let first_index = task.work_indexes_index.fetch_add(1, Ordering::Acquire);
-      let current_len = task.work_indexes.read().unwrap().len() as u32;
-
-      if current_len == 0 {
-        // The task is empty.
-        signal.task_empty();
-        self.end_task(task);
-        return true;
-      }
-
-      for i in (first_index..current_len).chain(0..first_index) {
-        let current_index = task.work_indexes.read().unwrap()[i as usize].fetch_add(1, Ordering::Acquire);
-        if current_index < task.work_size[i as usize] {
-          self.call_task(activity.ptr(), signal, i, current_index as usize);
-          return true;
-        }
-      }
-      
-      // The task is empty.
-      signal.task_empty();
-      self.end_task(activity.ptr());
+      self.call_task(activity.ptr(), signal);
       return true;
     }
   }
@@ -233,16 +200,15 @@ impl<'a> Workers<'a> {
     self.activities[thread_index].store(TaggedPtr::new(task_ptr, 0), Ordering::Release);
 
     let signal = EmptySignal{ pointer: &self.activities[thread_index], task: task_ref, state: EmptySignalState::Main };
-    self.call_task(unsafe { &*task_ptr }, signal, 0, 0);
+    self.call_task(unsafe { &*task_ptr }, signal);
   }
 
   // Calls the work function of a task, and calls end_task afterwards
-  fn call_task(&self, task: *const TaskObject<()>, signal: EmptySignal, first_index: u32, current_index: usize) {
+  fn call_task(&self, task: *const TaskObject<()>, signal: EmptySignal) {
     let task_ref = unsafe { &*task };
     // println!("Call: {} {:?}", first_index, task_ref.work_indexes.read().unwrap());
-    (task_ref.work.unwrap())(self, task, LoopArguments{ work_size: &task_ref.work_size, work_indexes: &task_ref.work_indexes, work_indexes_index: &task_ref.work_indexes_index, empty_signal: signal, first_index, current_index });
-    self.end_task(task);
-    
+    (task_ref.work.unwrap())(self, task, LoopArguments{ work_size: &task_ref.work_size, work_indexes: &task_ref.work_indexes, work_indexes_index: &task_ref.work_indexes_index, empty_signal: signal});
+    self.end_task(task); 
   }
 
   fn end_task(&self, task: *const TaskObject<()>) {

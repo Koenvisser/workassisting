@@ -154,12 +154,10 @@ pub struct LoopArguments<'a> {
   pub work_indexes: &'a RwLock<Vec<AtomicU32>>,
   pub work_indexes_index: &'a AtomicU32,
   pub empty_signal: EmptySignal<'a>,
-  pub first_index: u32,
-  pub current_index: usize,
 }
 
 impl Debug for LoopArguments<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-    write!(f, "LoopArguments:\n  work_size {:?}\n  work_indexes {:?}\n first_index {:?}\n  current_index {:?}", self.work_size, self.work_indexes, self.first_index, self.current_index)
+    write!(f, "LoopArguments:\n  work_size {:?}\n  work_indexes {:?}", self.work_size, self.work_indexes)
   }
 }
