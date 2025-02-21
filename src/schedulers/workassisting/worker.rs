@@ -2,7 +2,7 @@ use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 use crossbeam::deque;
 use crossbeam::deque::Steal;
-use crate::core::task::*;
+use super::task::*;
 use crate::utils;
 use crate::utils::ptr::AtomicTaggedPtr;
 use crate::utils::ptr::TaggedPtr;

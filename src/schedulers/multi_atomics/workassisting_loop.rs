@@ -1,5 +1,5 @@
 #[macro_export]
-macro_rules! workassisting_loop {
+macro_rules! workassisting_loop3 {
   ($loop_arguments_expr: expr, |$chunk_index: ident| $body: block) => {
     let mut loop_arguments: LoopArguments = $loop_arguments_expr;
     // Claim work
@@ -26,4 +26,4 @@ macro_rules! workassisting_loop {
     loop_arguments.empty_signal.task_empty();
   };
 }
-pub(crate) use workassisting_loop;
+pub(crate) use workassisting_loop3;

@@ -4,10 +4,35 @@ use core::mem::forget;
 use core::ops::{Drop, Deref, DerefMut};
 use std::cmp::min;
 use std::sync::RwLock;
-use crate::core::worker::*;
+use super::worker::*;
+use crate::scheduler::Task as TaskTrait;
+use crate::scheduler::TaskObject as TaskObjectTrait;
+use crate::scheduler::LoopArguments as LoopArgumentsTrait;
 
 pub const ATOMICS_SIZE: usize = 64;
 pub struct Task (*mut TaskObject<()>);
+
+impl TaskTrait for Task {
+  type Workers<'b> = Workers<'b>;
+  type TaskObject<T: Send + Sync> = TaskObject<T>;
+  type LoopArguments<'c> = LoopArguments<'c>;
+
+  fn new_dataparallel<T: Send + Sync>(
+    work: for <'a, 'b, 'c> fn(workers: &'a Self::Workers<'b>, data: *const Self::TaskObject<T>, loop_arguments: Self::LoopArguments<'c>) -> (),
+    finish: for <'a, 'b> fn(workers: &'a Self::Workers<'b>, data: *mut Self::TaskObject<T>) -> (),
+    data: T,
+    work_size: u32
+  ) -> Task {
+    Task::new_dataparallel(work, finish, data, work_size)
+  }
+
+  fn new_single<T: Send + Sync>(
+    function: for <'a, 'b> fn(workers: &'a Self::Workers<'b>, data: *mut Self::TaskObject<T>) -> (),
+    data: T
+  ) -> Task {
+    Task::new_single(function, data)
+  }
+}
 
 #[repr(C)]
 pub struct TaskObject<T> {
@@ -31,6 +56,8 @@ pub struct TaskObject<T> {
   pub(super) work_size: Vec<u32>,
   pub data: T,
 }
+
+impl<T: Send + Sync> TaskObjectTrait<T> for TaskObject<T> {}
 
 impl Debug for Task {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
@@ -161,3 +188,5 @@ impl Debug for LoopArguments<'_> {
     write!(f, "LoopArguments:\n  work_size {:?}\n  work_indexes {:?}", self.work_size, self.work_indexes)
   }
 }
+
+impl<'a> LoopArgumentsTrait<'a> for LoopArguments<'a> {}

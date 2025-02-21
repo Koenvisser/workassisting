@@ -1,4 +1,5 @@
-mod core;
+mod schedulers;
+mod scheduler;
 mod cases;
 mod utils;
 

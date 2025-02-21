@@ -1,8 +1,7 @@
 use core::sync::atomic::{Ordering, AtomicU32, AtomicU64};
 use num_format::{Locale, ToFormattedString};
-use crate::core::worker::*;
-use crate::core::task::*;
-use crate::core::workassisting_loop::*;
+use crate::scheduler::*;
+use crate::workassisting_loop;
 use crate::specialize_if;
 use crate::utils::array::alloc_undef_u32_array;
 use crate::utils::benchmark::ChartLineStyle;

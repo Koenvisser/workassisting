@@ -2,7 +2,7 @@ use core::sync::atomic::{Ordering, AtomicU64};
 use crate::cases::compact::{compact_sequential, count_sequential};
 use crate::core::worker::*;
 use crate::core::task::*;
-use crate::core::workassisting_loop::*;
+use crate::schedulers::workassisting_loop::*;
 use super::our::{BLOCK_SIZE, BlockInfo, reset, STATE_AGGREGATE_AVAILABLE, STATE_PREFIX_AVAILABLE};
 
 #[derive(Copy, Clone)]
