@@ -17,9 +17,13 @@ fn main() {
     println!("Running the benchmarks without the OpenMP implementations");
   }
 
+  let schedulers = vec![
+    Box::new(schedulers::multi_atomics::worker::Scheduler::new()) as Box<dyn scheduler::Scheduler>,
+  ];
+
   utils::affinity_first();
-  cases::lud::run(open_mp_enabled);
-  cases::quicksort::run(open_mp_enabled);
+  cases::lud::run(open_mp_enabled, &schedulers);
+  cases::quicksort::run(open_mp_enabled, &schedulers);
   cases::compact::run(open_mp_enabled);
   cases::scan::run(open_mp_enabled);
   cases::prime::run(open_mp_enabled);
