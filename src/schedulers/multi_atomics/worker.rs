@@ -8,6 +8,7 @@ use crate::utils::ptr::AtomicTaggedPtr;
 use crate::utils::ptr::TaggedPtr;
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
 use crate::scheduler::Workers as WorkersTrait;
+use crate::scheduler::Scheduler as SchedulerTrait;
 
 pub struct Workers<'a> {
   is_finished: &'a AtomicBool,
@@ -37,8 +38,36 @@ impl<'a> WorkersTrait<'a> for Workers<'a> {
   }
 }
 
+pub struct Scheduler;
+
+impl SchedulerTrait for Scheduler {
+  type Workers<'a> = Workers<'a>;
+  type Task = Task;
+
+  fn get_name(&self) -> &'static str {
+    "Multi-atomics"
+  }
+
+  fn run(&self, worker_count: usize, initial_task: Task) {
+    Workers::run(worker_count, initial_task);
+  }
+}
+
+#[macro_export]
+macro_rules! for_each_scheduler {
+  ($body: expr) => {
+    $body(Scheduler);
+  };
+}
+pub(crate) use for_each_scheduler;
+
+fn test(scheduler: impl SchedulerTrait) {
+  println!("Scheduler: {}", scheduler.get_name());
+}
+
 impl<'a> Workers<'a> {
   pub fn run(worker_count: usize, initial_task: Task) {
+    for_each_scheduler!(test);
     Workers::run_on(&AFFINITY_MAPPING[0 .. worker_count], initial_task);
   }
 

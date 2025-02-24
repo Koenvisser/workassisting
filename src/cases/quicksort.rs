@@ -17,7 +17,7 @@ pub const BLOCK_SIZE: usize = 4096;
 pub const DATAPAR_CUTOFF: usize = 1024 * 32;
 pub const SEQUENTIAL_CUTOFF: usize = 1024 * 8;
 
-pub fn run(open_mp_enabled: bool) {
+pub fn run(open_mp_enabled: bool, schedulers: &Vec<Box<dyn Scheduler>>) {
   run_on(open_mp_enabled, 1024 * 256);
   run_on(open_mp_enabled, 1024 * 1024);
 }

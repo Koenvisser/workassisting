@@ -4,8 +4,11 @@
 //   fn get_name(&self) -> &'static str;
 // }
 
-pub struct Scheduler {
-  pub name: &'static str
+pub trait Scheduler {
+  type Workers<'a>: Workers<'a> where Self: Sized;
+  type Task: Task where Self: Sized;
+  fn get_name(&self) -> &'static str;
+  fn run(&self, worker_count: usize, initial_task: Self::Task) where Self: Sized;
 }
 
 pub trait Workers<'a> {
