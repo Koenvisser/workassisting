@@ -8,7 +8,6 @@ use crate::utils::ptr::AtomicTaggedPtr;
 use crate::utils::ptr::TaggedPtr;
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
 use crate::scheduler::Workers as WorkersTrait;
-use crate::scheduler::Scheduler as SchedulerTrait;
 
 pub struct Workers<'a> {
   is_finished: &'a AtomicBool,
@@ -303,22 +302,5 @@ impl<'a> EmptySignal<'a> {
       }
     }
     self.state = EmptySignalState::DidSignal;
-  }
-}
-
-pub struct Scheduler;
-
-impl Scheduler {
-  pub fn new() -> Self {
-    Scheduler
-  }
-}
-
-impl SchedulerTrait for Scheduler {
-  type Workers<'a> = Workers<'a>;
-  type Task = Task;
-
-  fn get_name(&self) -> &'static str {
-    "Multi-Atomics"
   }
 }
