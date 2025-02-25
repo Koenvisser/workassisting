@@ -2,6 +2,8 @@ use core::fmt::Debug;
 use std::time;
 use std::fs::File;
 use std::io::{prelude::*, BufWriter};
+use crate::for_each_scheduler;
+use crate::scheduler::Scheduler as SchedulerTrait;
 use crate::utils;
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
 
@@ -101,8 +103,11 @@ impl<T: Copy + Debug + Eq + Send> Benchmarker<T> {
     self.parallel("Work stealing", ChartLineStyle::WorkStealing, parallel)
   }
 
-  pub fn our<Par: FnMut(usize) -> T>(self, parallel: Par) -> Self {
-    self.parallel("Work assisting (our)", ChartLineStyle::WorkAssisting, parallel)
+  pub fn our<Par: FnMut(usize, S) -> T, S: SchedulerTrait>(self, parallel: Par) -> Self {
+    fn our_parallel<T: Copy + Debug + Eq + Send>(benchmarker: Benchmarker<T>, scheduler: impl SchedulerTrait) {
+      benchmarker.parallel(scheduler.get_name(), ChartLineStyle::WorkAssisting, |thread_count| parallel(thread_count, scheduler));
+    }
+    for_each_scheduler!(self, our_parallel);
   }
 
   pub fn sequential<Seq: FnMut() -> T>(self, name: &str, sequential: Seq) -> Self {

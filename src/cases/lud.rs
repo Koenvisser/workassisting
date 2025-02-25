@@ -1,7 +1,9 @@
 use core::panic;
 use core::sync::atomic::AtomicU64;
+use crate::scheduler::Scheduler as SchedulerTrait;
+use crate::scheduler::Workers as WorkerTrait;
 use crate::utils::matrix::SquareMatrix;
-use crate::scheduler::*;
+use crate::for_each_scheduler;
 use crate::utils::benchmark::{benchmark_with_title, ChartStyle, ChartLineStyle};
 use num_format::{Locale, ToFormattedString};
 
@@ -9,7 +11,7 @@ pub mod our;
 pub mod workstealing;
 
 
-pub fn run(openmp_enabled: bool, schedulers: &Vec<Box<dyn Scheduler>>) {
+pub fn run(openmp_enabled: bool) {
   test("sequential", |mut matrix| {
     sequential(&mut matrix);
     matrix
@@ -26,24 +28,8 @@ pub fn run(openmp_enabled: bool, schedulers: &Vec<Box<dyn Scheduler>>) {
     result.0
   });
 
-  for_each_scheduler!(|scheduler| {
-
-  });
-  {
-    let scheduler = SchedulerStruct{};
-    let name = scheduler.get_name();
-    test(name, |matrix| {
-      let pending = AtomicU64::new(0);
-      let mut matrices = vec![(matrix, AtomicU64::new(0), AtomicU64::new(0))];
-      scheduler.run(2, our::create_task(&matrices, &pending));
-      let result = matrices.pop().unwrap();
-      result.0
-    });
-  }
-  {
-    let scheduler = SchedulerStruct2{};
-    let name = scheduler.get_name();
-    test(name, |matrix| {
+  fn test_schedulers(scheduler: impl SchedulerTrait) {
+    test(scheduler.get_name(), |matrix| {
       let pending = AtomicU64::new(0);
       let mut matrices = vec![(matrix, AtomicU64::new(0), AtomicU64::new(0))];
       scheduler.run(2, our::create_task(&matrices, &pending));
@@ -52,13 +38,7 @@ pub fn run(openmp_enabled: bool, schedulers: &Vec<Box<dyn Scheduler>>) {
     });
   }
 
-  test("workassisting", |matrix| {
-    let pending = AtomicU64::new(0);
-    let mut matrices = vec![(matrix, AtomicU64::new(0), AtomicU64::new(0))];
-    Workers::run(2, our::create_task(&matrices, &pending));
-    let result = matrices.pop().unwrap();
-    result.0
-  });
+  for_each_scheduler!(test_schedulers);
 
   run_on(openmp_enabled, 256, 1);
   run_on(openmp_enabled, 256, 2);
@@ -101,11 +81,11 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
   })
   .open_mp_lud(openmp_enabled, "OpenMP (loops)", false, ChartLineStyle::OmpDynamic, &filename(size), matrix_count)
   .open_mp_lud(openmp_enabled, "OpenMP (tasks)", true, ChartLineStyle::OmpTask, &filename(size), matrix_count)
-  .our(|thread_count| {
+  .our(|thread_count, scheduler: impl SchedulerTrait| {
     for i in 0 .. matrix_count {
       input.copy_to(&mut matrices[i].0);
     }
-    Workers::run(thread_count, our::create_task(&matrices, &pending));
+    // Workers::run(thread_count, our::create_task(&matrices, &pending));
   });
 }
 

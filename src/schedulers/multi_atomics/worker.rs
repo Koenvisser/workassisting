@@ -53,21 +53,8 @@ impl SchedulerTrait for Scheduler {
   }
 }
 
-#[macro_export]
-macro_rules! for_each_scheduler {
-  ($body: expr) => {
-    $body(Scheduler);
-  };
-}
-pub(crate) use for_each_scheduler;
-
-fn test(scheduler: impl SchedulerTrait) {
-  println!("Scheduler: {}", scheduler.get_name());
-}
-
 impl<'a> Workers<'a> {
   pub fn run(worker_count: usize, initial_task: Task) {
-    for_each_scheduler!(test);
     Workers::run_on(&AFFINITY_MAPPING[0 .. worker_count], initial_task);
   }
 
