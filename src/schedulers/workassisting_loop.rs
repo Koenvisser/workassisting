@@ -9,10 +9,10 @@ pub(crate) use workassisting_loop;
 
 #[macro_export]
 macro_rules! for_each_scheduler {
-  ($($arg: ident),*, $body: expr) => {
+  ($body: expr, $($arg: expr),*) => {
     use crate::schedulers::multi_atomics::worker::Scheduler;
-    $body($arg, Scheduler);
-    $body($arg, Scheduler);
+    $body(Scheduler, $($arg),*);
+    $body(Scheduler, $($arg),*);
   };
   ($body: expr) => {
     use crate::schedulers::multi_atomics::worker::Scheduler;

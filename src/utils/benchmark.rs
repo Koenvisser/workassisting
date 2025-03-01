@@ -102,12 +102,9 @@ impl<T: Copy + Debug + Eq + Send> Benchmarker<T> {
   pub fn work_stealing<Par: FnMut(usize) -> T>(self, parallel: Par) -> Self {
     self.parallel("Work stealing", ChartLineStyle::WorkStealing, parallel)
   }
-
-  pub fn our<Par: FnMut(usize, S) -> T, S: SchedulerTrait>(self, parallel: Par) -> Self {
-    fn our_parallel<T: Copy + Debug + Eq + Send>(benchmarker: Benchmarker<T>, scheduler: impl SchedulerTrait) {
-      benchmarker.parallel(scheduler.get_name(), ChartLineStyle::WorkAssisting, |thread_count| parallel(thread_count, scheduler));
-    }
-    for_each_scheduler!(self, our_parallel);
+  
+  pub fn our<Par: FnMut(usize) -> T>(self, parallel: Par) -> Self {
+    self.parallel("Work assisting (our)", ChartLineStyle::WorkAssisting, parallel)
   }
 
   pub fn sequential<Seq: FnMut() -> T>(self, name: &str, sequential: Seq) -> Self {

@@ -3,6 +3,7 @@ use core::sync::atomic::AtomicU64;
 use crate::scheduler::Scheduler as SchedulerTrait;
 use crate::scheduler::Workers as WorkerTrait;
 use crate::utils::matrix::SquareMatrix;
+use crate::utils::benchmark::Benchmarker;
 use crate::for_each_scheduler;
 use crate::utils::benchmark::{benchmark_with_title, ChartStyle, ChartLineStyle};
 use num_format::{Locale, ToFormattedString};
@@ -61,7 +62,7 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
 
   let name = "LUD (n = ".to_owned() + &size.to_formatted_string(&Locale::en) + ", m = " + &matrix_count.to_formatted_string(&Locale::en) + ")";
   let title = "m = ".to_owned() + &matrix_count.to_formatted_string(&Locale::en);
-  benchmark_with_title(if matrix_count == 1 { ChartStyle::SmallWithKey } else { ChartStyle::Small }, 9, &name, &title, || {
+  let mut benchmark = benchmark_with_title(if matrix_count == 1 { ChartStyle::SmallWithKey } else { ChartStyle::Small }, 9, &name, &title, || {
     for i in 0 .. matrix_count {
       input.copy_to(&mut matrices[i].0);
       sequential_tiled(&mut matrices[i].0);
@@ -80,13 +81,29 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
     workstealing::run(&matrices, &pending, thread_count);
   })
   .open_mp_lud(openmp_enabled, "OpenMP (loops)", false, ChartLineStyle::OmpDynamic, &filename(size), matrix_count)
-  .open_mp_lud(openmp_enabled, "OpenMP (tasks)", true, ChartLineStyle::OmpTask, &filename(size), matrix_count)
-  .our(|thread_count, scheduler: impl SchedulerTrait| {
-    for i in 0 .. matrix_count {
-      input.copy_to(&mut matrices[i].0);
-    }
+  .open_mp_lud(openmp_enabled, "OpenMP (tasks)", true, ChartLineStyle::OmpTask, &filename(size), matrix_count);
+  // .our(benchmark_our);
+
+  for_each_scheduler!(benchmark_our, &mut benchmark, matrix_count, input.clone(), &mut matrices, &pending);
+
+  fn benchmark_our(
+    scheduler: impl SchedulerTrait, 
+    benchmark: &mut Benchmarker<()>, 
+    matrix_count: usize, 
+    input: SquareMatrix,
+    matrices: &mut Vec<(SquareMatrix, AtomicU64, AtomicU64)>,
+    pending: &AtomicU64
+  ) {
+    benchmark.our(|thread_count| {
+      for i in 0 .. matrix_count {
+        input.copy_to(&mut matrices[i].0);
+      }
+      scheduler.run(thread_count, our::create_task(&matrices, &pending));
+    });
     // Workers::run(thread_count, our::create_task(&matrices, &pending));
-  });
+  }
+
+  
 }
 
 fn test<F: FnOnce(SquareMatrix) -> SquareMatrix>(name: &str, f: F) {
