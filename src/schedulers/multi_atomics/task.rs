@@ -57,7 +57,15 @@ pub struct TaskObject<T> {
   pub data: T,
 }
 
-impl<T: Send + Sync> TaskObjectTrait<T> for TaskObject<T> {}
+impl<T: Send + Sync> TaskObjectTrait<T> for TaskObject<T> {
+  unsafe fn get_data<'a>(task: *const TaskObject<T>) -> &'a T {
+    TaskObject::get_data(task)
+  }
+
+  unsafe fn take_data<'a>(task: *mut TaskObject<T>) -> T {
+    TaskObject::take_data(task)
+  }
+}
 
 impl Debug for Task {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {

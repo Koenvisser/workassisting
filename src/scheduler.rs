@@ -23,7 +23,10 @@ pub trait Workers<'a> {
   fn push_task(&self, task: Self::Task) where Self: Sized;
 }
 
-pub trait TaskObject<T: Send + Sync> {}
+pub trait TaskObject<T: Send + Sync> {
+  unsafe fn get_data<'a>(task: *const Self) -> &'a T;
+  unsafe fn take_data(task: *mut Self) -> T;
+}
 
 pub trait LoopArguments<'a> {}
 

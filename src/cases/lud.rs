@@ -33,7 +33,7 @@ pub fn run(openmp_enabled: bool) {
     test(scheduler.get_name(), |matrix| {
       let pending = AtomicU64::new(0);
       let mut matrices = vec![(matrix, AtomicU64::new(0), AtomicU64::new(0))];
-      scheduler.run(2, our::create_task(&matrices, &pending));
+      scheduler.run(2, our::create_task(&matrices, &pending, &scheduler));
       let result = matrices.pop().unwrap();
       result.0
     });
@@ -98,9 +98,8 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
       for i in 0 .. matrix_count {
         input.copy_to(&mut matrices[i].0);
       }
-      scheduler.run(thread_count, our::create_task(&matrices, &pending));
+      scheduler.run(thread_count, our::create_task(&matrices, &pending, &scheduler));
     });
-    // Workers::run(thread_count, our::create_task(&matrices, &pending));
   }
 
   

@@ -6,9 +6,8 @@
 use crate::utils::matrix::SquareMatrix;
 use core::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU64;
-use crate::core::worker::*;
-use crate::core::task::*;
-use crate::core::workassisting_loop::*;
+use crate::scheduler::*;
+use crate::schedulers::workassisting_loop::*;
 use super::*;
 
 // The workload of LU decomposition is parallelised as follows.
@@ -34,9 +33,13 @@ const INNER_BLOCK_SIZE_COLUMNS: usize = 32;
 // The matrix size should be a multiple of OUTER_BLOCK_SIZE.
 // OUTER_BLOCK_SIZE should be a multiple of BORDER_BLOCK_SIZE, INNER_BLOCK_SIZE_ROWS and INNER_BLOCK_SIZE_COLUMNS.
 
-pub fn create_task(matrices: &[(SquareMatrix, AtomicU64, AtomicU64)], pending: &AtomicU64) -> Task {
+pub fn create_task<'a, S, T>(matrices: &[(SquareMatrix, AtomicU64, AtomicU64)], pending: &AtomicU64, scheduler: &S) -> T 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{ 
   pending.store(matrices.len() as u64, Ordering::Relaxed);
-  Task::new_dataparallel::<Init>(task_init_go, task_init_finish, Init{ matrices, pending }, matrices.len() as u32)
+  T::new_dataparallel::<Init>(task_init_go::<T>, task_init_finish::<T>, Init{ matrices, pending }, matrices.len() as u32)
 }
 
 struct Init<'a> {
@@ -44,17 +47,17 @@ struct Init<'a> {
   pending: &'a AtomicU64
 }
 
-fn task_init_go(workers: &Workers, task: *const TaskObject<Init>, loop_arguments: LoopArguments) {
-  let data = unsafe { TaskObject::get_data(task) };
+fn task_init_go<'a, 'b, 'c, T:Task>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<Init>, loop_arguments: T::LoopArguments<'c>) {
+  let data = unsafe { T::TaskObject::get_data(task) };
 
   workassisting_loop!(loop_arguments, |index| {
     let (matrix, synchronisation_var, _) = &data.matrices[index as usize];
     diagonal_tile(0, matrix);
     start_iteration(workers, 0, matrix, synchronisation_var, data.pending)
-  });
+  }, scheduler);
 }
 
-fn task_init_finish(_workers: &Workers, task: *mut TaskObject<Init>) {
+fn task_init_finish<'a, 'b, T:Task>(_workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Init>) {
   unsafe {
     // Assure that the task gets dropped
     drop(Box::from_raw(task));
