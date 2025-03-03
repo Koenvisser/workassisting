@@ -7,7 +7,7 @@ use crate::utils::matrix::SquareMatrix;
 use core::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU64;
 use crate::scheduler::*;
-use crate::schedulers::workassisting_loop::*;
+use crate::workassisting_loop;
 use super::*;
 
 // The workload of LU decomposition is parallelised as follows.
