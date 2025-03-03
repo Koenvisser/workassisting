@@ -5,6 +5,7 @@ use crate::scheduler::Workers as WorkerTrait;
 use crate::utils::matrix::SquareMatrix;
 use crate::utils::benchmark::Benchmarker;
 use crate::for_each_scheduler;
+use crate::for_each_scheduler_with_arg;
 use crate::utils::benchmark::{benchmark_with_title, ChartStyle, ChartLineStyle};
 use num_format::{Locale, ToFormattedString};
 
@@ -84,17 +85,17 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
   .open_mp_lud(openmp_enabled, "OpenMP (tasks)", true, ChartLineStyle::OmpTask, &filename(size), matrix_count);
   // .our(benchmark_our);
 
-  for_each_scheduler!(benchmark_our, &mut benchmark, matrix_count, input.clone(), &mut matrices, &pending);
-
+  for_each_scheduler_with_arg!(benchmark_our, benchmark, matrix_count, input.clone(), &mut matrices, &pending);
+  
   fn benchmark_our(
     scheduler: impl SchedulerTrait, 
-    benchmark: &mut Benchmarker<()>, 
+    benchmark: Benchmarker<()>, 
     matrix_count: usize, 
     input: SquareMatrix,
     matrices: &mut Vec<(SquareMatrix, AtomicU64, AtomicU64)>,
     pending: &AtomicU64
-  ) {
-    benchmark.our(|thread_count| {
+  ) -> Benchmarker<()> {
+    return benchmark.our(|thread_count| {
       for i in 0 .. matrix_count {
         input.copy_to(&mut matrices[i].0);
       }
