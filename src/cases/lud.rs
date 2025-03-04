@@ -99,7 +99,7 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
       for i in 0 .. matrix_count {
         input.copy_to(&mut matrices[i].0);
       }
-      scheduler.run(thread_count, our::create_task(&matrices, &pending, &scheduler));
+      scheduler.run(thread_count, our::create_task(&matrices, &pending));
     });
   }
 

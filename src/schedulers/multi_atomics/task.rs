@@ -33,9 +33,9 @@ impl TaskTrait for Task {
     Task::new_single(function, data)
   }
 
-  fn work_loop<'a, F: Fn(u32)>(
+  fn work_loop<'a, F: FnMut(u32)>(
       loop_arguments: Self::LoopArguments<'a>,
-      work: F,
+      mut work: F,
     ) {
       // Claim work
     let mut chunk_idx;

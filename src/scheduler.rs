@@ -31,7 +31,7 @@ pub trait TaskObject<T: Send + Sync> {
 pub trait LoopArguments<'a> {}
 
 pub trait Task {
-  type Workers<'a>: Workers<'a>;
+  type Workers<'a>: Workers<'a, Task = Self>;
   type TaskObject<T: Send + Sync>: TaskObject<T>;
   type LoopArguments<'b>: LoopArguments<'b>;
 
@@ -47,7 +47,7 @@ pub trait Task {
     data: T
   ) -> Self where Self: Sized;
 
-  fn work_loop<'a, F: Fn(u32)>(
+  fn work_loop<'a, F: FnMut(u32)>(
     loop_arguments: Self::LoopArguments<'a>,
     work: F,
   ); 

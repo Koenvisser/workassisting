@@ -32,7 +32,7 @@ const INNER_BLOCK_SIZE_COLUMNS: usize = 32;
 // The matrix size should be a multiple of OUTER_BLOCK_SIZE.
 // OUTER_BLOCK_SIZE should be a multiple of BORDER_BLOCK_SIZE, INNER_BLOCK_SIZE_ROWS and INNER_BLOCK_SIZE_COLUMNS.
 
-pub fn create_task<'a, S, T>(matrices: &[(SquareMatrix, AtomicU64, AtomicU64)], pending: &AtomicU64, scheduler: &S) -> T 
+pub fn create_task<'a, S, T>(matrices: &[(SquareMatrix, AtomicU64, AtomicU64)], pending: &AtomicU64) -> T 
   where 
     S: Scheduler<Task=T>,
     T: Task
@@ -87,7 +87,7 @@ fn start_iteration<'a, T:Task>(workers: &T::Workers<'a>, offset: usize, matrix: 
 
     workers.push_task(
       T::new_dataparallel::<Data>(
-        task_border_left_go::<T>,
+        task_border_left_go,
         task_border_finish,
         Data{ matrix, offset, synchronisation_var, pending },
         ((remaining + BORDER_BLOCK_SIZE - 1) / BORDER_BLOCK_SIZE) as u32
@@ -110,23 +110,23 @@ fn task_border_left_go<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *
   let mut temp = Align([0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE]);
   border_init(data.offset, data.matrix, &mut temp);
 
-  workassisting_loop!(loop_arguments, |chunk_index| {
+  T::work_loop(loop_arguments, |chunk_index| {
     border_left_chunk::<BORDER_BLOCK_SIZE>(data.offset, data.matrix, &temp, chunk_index as usize);
   });
 }
 
-fn task_border_top_go(_workers: &Workers, task: *const TaskObject<Data>, loop_arguments: LoopArguments) {
+fn task_border_top_go<'a, 'b, T:Task>(_workers: &T::Workers<'a>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'b>) {
   let data = unsafe { TaskObject::get_data(task) };
 
   let mut temp = Align([0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE]);
   border_init(data.offset, data.matrix, &mut temp);
 
-  workassisting_loop!(loop_arguments, |chunk_index| {
+  T::work_loop(loop_arguments, |chunk_index| {
     border_top_chunk::<BORDER_BLOCK_SIZE>(data.offset, data.matrix, &temp, chunk_index as usize);
   });
 }
 
-fn task_border_finish(workers: &Workers, task: *mut TaskObject<Data>) {
+fn task_border_finish<'a, T:Task>(workers: &T::Workers<'a>, task: *mut T::TaskObject<Data>) {
   let data = unsafe { TaskObject::take_data(task) };
 
   // The algorithm continues when both the left and the top parts have finished.
@@ -153,7 +153,7 @@ fn task_border_finish(workers: &Workers, task: *mut TaskObject<Data>) {
   );
 }
 
-fn task_inner_go(_workers: &Workers, task: *const TaskObject<Data>, loop_arguments: LoopArguments) {
+fn task_inner_go<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
   let data = unsafe { TaskObject::get_data(task) };
 
   let remaining = data.matrix.size() - data.offset - OUTER_BLOCK_SIZE;
@@ -163,7 +163,7 @@ fn task_inner_go(_workers: &Workers, task: *const TaskObject<Data>, loop_argumen
   let mut sum = Align([0.0; max(INNER_BLOCK_SIZE_COLUMNS, INNER_BLOCK_SIZE_ROWS)]);
   let mut temp_index = 0;
 
-  workassisting_loop!(loop_arguments, |chunk_index| {
+  T::work_loop(loop_arguments, |chunk_index| {
     interior_chunk::<INNER_BLOCK_SIZE_ROWS, INNER_BLOCK_SIZE_COLUMNS>
       (data.offset, rows, data.matrix, &mut temp_index, &mut temp_top.0, &mut sum.0, chunk_index as usize);
     let i_global = data.offset + OUTER_BLOCK_SIZE + INNER_BLOCK_SIZE_ROWS * (chunk_index as usize % rows);
@@ -180,9 +180,9 @@ fn task_inner_go(_workers: &Workers, task: *const TaskObject<Data>, loop_argumen
   });
 }
 
-fn task_inner_finish(workers: &Workers, task: *mut TaskObject<Data>) {
+fn task_inner_finish<'a, T:Task>(workers: &T::Workers<'a>, task: *mut T::TaskObject<Data>) {
   let data = unsafe { TaskObject::take_data(task) };
-  start_iteration(workers, data.offset + OUTER_BLOCK_SIZE, data.matrix, data.synchronisation_var, data.pending);
+  start_iteration::<T>(workers, data.offset + OUTER_BLOCK_SIZE, data.matrix, data.synchronisation_var, data.pending);
 }
 
 // https://stackoverflow.com/questions/53619695/calculating-maximum-value-of-a-set-of-constant-expressions-at-compile-time
