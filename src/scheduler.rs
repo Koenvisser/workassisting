@@ -46,4 +46,9 @@ pub trait Task {
     function: for <'a, 'b> fn(workers: &'a Self::Workers<'b>, data: *mut Self::TaskObject<T>) -> (),
     data: T
   ) -> Self where Self: Sized;
+
+  fn work_loop<'a, F: Fn(u32)>(
+    loop_arguments: Self::LoopArguments<'a>,
+    work: F,
+  ); 
 }

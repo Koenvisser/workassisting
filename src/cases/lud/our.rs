@@ -7,7 +7,6 @@ use crate::utils::matrix::SquareMatrix;
 use core::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU64;
 use crate::scheduler::*;
-use crate::workassisting_loop;
 use super::*;
 
 // The workload of LU decomposition is parallelised as follows.
@@ -50,11 +49,11 @@ struct Init<'a> {
 fn task_init_go<'a, 'b, 'c, T:Task>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<Init>, loop_arguments: T::LoopArguments<'c>) {
   let data = unsafe { T::TaskObject::get_data(task) };
 
-  workassisting_loop!(loop_arguments, |index| {
+  T::work_loop(loop_arguments, |index| {
     let (matrix, synchronisation_var, _) = &data.matrices[index as usize];
     diagonal_tile(0, matrix);
-    start_iteration(workers, 0, matrix, synchronisation_var, data.pending)
-  }, scheduler);
+    start_iteration::<T>(workers, 0, matrix, synchronisation_var, data.pending)
+  });
 }
 
 fn task_init_finish<'a, 'b, T:Task>(_workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Init>) {
@@ -71,7 +70,7 @@ struct Data<'a> {
   pending: &'a AtomicU64,
 }
 
-fn start_iteration(workers: &Workers, offset: usize, matrix: &SquareMatrix, synchronisation_var: &AtomicU64, pending: &AtomicU64) {
+fn start_iteration<'a, T:Task>(workers: &T::Workers<'a>, offset: usize, matrix: &SquareMatrix, synchronisation_var: &AtomicU64, pending: &AtomicU64) {
   let i_end = offset + OUTER_BLOCK_SIZE;
 
   if offset + OUTER_BLOCK_SIZE >= matrix.size() {
@@ -87,15 +86,15 @@ fn start_iteration(workers: &Workers, offset: usize, matrix: &SquareMatrix, sync
     synchronisation_var.store(0, Ordering::Relaxed);
 
     workers.push_task(
-      Task::new_dataparallel::<Data>(
-        task_border_left_go,
+      T::new_dataparallel::<Data>(
+        task_border_left_go::<T>,
         task_border_finish,
         Data{ matrix, offset, synchronisation_var, pending },
         ((remaining + BORDER_BLOCK_SIZE - 1) / BORDER_BLOCK_SIZE) as u32
       )
     );
     workers.push_task(
-      Task::new_dataparallel::<Data>(
+      T::new_dataparallel::<Data>(
         task_border_top_go,
         task_border_finish,
         Data{ matrix, offset, synchronisation_var, pending },
@@ -105,7 +104,7 @@ fn start_iteration(workers: &Workers, offset: usize, matrix: &SquareMatrix, sync
   }
 }
 
-fn task_border_left_go(_workers: &Workers, task: *const TaskObject<Data>, loop_arguments: LoopArguments) {
+fn task_border_left_go<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
   let data = unsafe { TaskObject::get_data(task) };
 
   let mut temp = Align([0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE]);
