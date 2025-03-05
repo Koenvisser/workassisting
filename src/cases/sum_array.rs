@@ -1,7 +1,8 @@
 use core::sync::atomic::{Ordering, AtomicU64};
 use rayon::prelude::*;
-use crate::core::worker::*;
-use crate::utils::benchmark::{benchmark, ChartStyle, Nesting, ChartLineStyle};
+use crate::scheduler::*;
+use crate::for_each_scheduler_with_arg;
+use crate::utils::benchmark::{benchmark, ChartStyle, Nesting, ChartLineStyle, Benchmarker};
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
 use num_format::{Locale, ToFormattedString};
 
@@ -17,7 +18,7 @@ pub fn run(open_mp_enabled: bool) {
     let name = "Sum array (n = ".to_owned() + &(count).to_formatted_string(&Locale::en) + ")";
     let array: Vec<u64> = (START .. START + count).map(|number| crate::cases::sum_function::random(number) as u64).collect();
 
-    benchmark(
+    let mut benchmark = benchmark(
       ChartStyle::WithKey,
       16,
       &name,
@@ -30,13 +31,25 @@ pub fn run(open_mp_enabled: bool) {
       })
       .open_mp(open_mp_enabled, "OpenMP (static)", ChartLineStyle::OmpStatic, "sum-array-static", Nesting::Flat, count as usize, None)
       .open_mp(open_mp_enabled, "OpenMP (dynamic)", ChartLineStyle::OmpDynamic, "sum-array-dynamic", Nesting::Flat, count as usize, None)
-      .open_mp(open_mp_enabled, "OpenMP (taskloop)", ChartLineStyle::OmpTask, "sum-array-taskloop", Nesting::Flat, count as usize, None)
-      .our(|thread_count| {
-        let counter = AtomicU64::new(0);
-        let task = our::create_task(&counter, &array);
-        Workers::run(thread_count, task);
-        counter.load(Ordering::Acquire)
-      });
+      .open_mp(open_mp_enabled, "OpenMP (taskloop)", ChartLineStyle::OmpTask, "sum-array-taskloop", Nesting::Flat, count as usize, None);
+
+    for_each_scheduler_with_arg!(benchmark_our, benchmark, &array);
+
+      fn benchmark_our<S>(
+        scheduler: S,
+        benchmark: Benchmarker<u64>,
+        array: &Vec<u64>
+      ) -> Benchmarker<u64>
+      where
+        S: Scheduler
+      {
+        return benchmark.our(|thread_count| {
+          let counter = AtomicU64::new(0);
+          let task = our::create_task(&counter, array);
+          scheduler.run(thread_count, task);
+          counter.load(Ordering::Acquire)
+        })
+      }
   }
 }
 

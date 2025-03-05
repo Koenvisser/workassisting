@@ -1,5 +1,5 @@
 use core::fmt::Debug;
-use core::sync::atomic::{ AtomicI32, AtomicU32 };
+use core::sync::atomic::{ AtomicI32, AtomicU32, Ordering };
 use core::mem::forget;
 use core::ops::{Drop, Deref, DerefMut};
 use super::worker::*;
@@ -70,6 +70,23 @@ impl TaskTrait for Task {
     loop_arguments: Self::LoopArguments<'a>,
     mut work: F,
   ) {
+    let mut loop_arguments: LoopArguments = loop_arguments;
+    // Claim work
+    let mut chunk_idx = loop_arguments.first_index;
+
+    while chunk_idx < loop_arguments.work_size {
+      if chunk_idx == loop_arguments.work_size - 1 {
+        // All work is claimed.
+        loop_arguments.empty_signal.task_empty();
+      }
+
+      // Copy chunk_index to an immutable variable, such that a user of this macro cannot mutate it.
+      let chunk_index = chunk_idx;
+      work(chunk_index);
+
+      chunk_idx = loop_arguments.work_index.fetch_add(1, Ordering::Relaxed);
+    }
+    loop_arguments.empty_signal.task_empty();
   }
 }
 

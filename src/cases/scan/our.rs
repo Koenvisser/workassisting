@@ -1,9 +1,6 @@
 use core::sync::atomic::{Ordering, AtomicU64, AtomicUsize};
 use crate::cases::scan::{scan_sequential, fold_sequential};
-use crate::core::worker::*;
-use crate::core::task::*;
-use crate::core::workassisting_loop::*;
-
+use crate::scheduler::*;
 pub const BLOCK_SIZE: u64 = 1024 * 4;
 
 #[derive(Copy, Clone)]
@@ -14,23 +11,23 @@ struct InitialData<'a> {
   pending: &'a AtomicUsize
 }
 
-pub fn create_initial_task(inputs: &[Box<[u64]>], temps: &[Box<[BlockInfo]>], outputs: &[Box<[AtomicU64]>], pending: &AtomicUsize) -> Task {
+pub fn create_initial_task<T:Task>(inputs: &[Box<[u64]>], temps: &[Box<[BlockInfo]>], outputs: &[Box<[AtomicU64]>], pending: &AtomicUsize) -> T {
   if inputs.len() == 1 {
     pending.store(1, Ordering::Relaxed);
     create_task(&inputs[0], &temps[0], &outputs[0], pending)
   } else {
-    Task::new_dataparallel::<InitialData>(initial_run, initial_finish, InitialData{ inputs, temps, outputs, pending }, inputs.len() as u32)
+    T::new_dataparallel::<InitialData>(initial_run, initial_finish, InitialData{ inputs, temps, outputs, pending }, inputs.len() as u32)
   }
 }
 
-fn initial_run(workers: &Workers, task: *const TaskObject<InitialData>, loop_arguments: LoopArguments) {
-  let data = unsafe { TaskObject::get_data(task) };
-  workassisting_loop!(loop_arguments, |i| {
+fn initial_run<'a, 'b, 'c, T:Task>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<InitialData>, loop_arguments: T::LoopArguments<'c>) {
+  let data = unsafe { T::TaskObject::get_data(task) };
+  T::work_loop(loop_arguments, |i| {
     workers.push_task(create_task(&data.inputs[i as usize], &data.temps[i as usize], &data.outputs[i as usize], data.pending));
   });
 }
-fn initial_finish(workers: &Workers, task: *mut TaskObject<InitialData>) {
-  let data = unsafe { TaskObject::take_data(task) };
+fn initial_finish<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<InitialData>) {
+  let data = unsafe { T::TaskObject::take_data(task) };
   if data.pending.fetch_sub(1, Ordering::AcqRel) == 1 {
     workers.finish();
   }
@@ -68,15 +65,15 @@ pub fn reset(temp: &[BlockInfo]) {
   }
 }
 
-pub fn create_task(input: &[u64], temp: &[BlockInfo], output: &[AtomicU64], pending: &AtomicUsize) -> Task {
+pub fn create_task<T:Task>(input: &[u64], temp: &[BlockInfo], output: &[AtomicU64], pending: &AtomicUsize) -> T {
   reset(temp);
-  Task::new_dataparallel::<Data>(run, finish, Data{ input, temp, output, pending }, ((input.len() as u64 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
+  T::new_dataparallel::<Data>(run, finish, Data{ input, temp, output, pending }, ((input.len() as u64 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
 }
 
-fn run(_workers: &Workers, task: *const TaskObject<Data>, loop_arguments: LoopArguments) {
-  let data = unsafe { TaskObject::get_data(task) };
+fn run<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
+  let data = unsafe { T::TaskObject::get_data(task) };
   let mut sequential = true;
-  workassisting_loop!(loop_arguments, |block_index| {
+  T::work_loop(loop_arguments, |block_index| {
     // Local scan
     // reduce-then-scan
     let start = block_index as usize * BLOCK_SIZE as usize;
@@ -135,8 +132,8 @@ fn run(_workers: &Workers, task: *const TaskObject<Data>, loop_arguments: LoopAr
   });
 }
 
-fn finish(workers: &Workers, task: *mut TaskObject<Data>) {
-  let data = unsafe { TaskObject::take_data(task) };
+fn finish<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Data>) {
+  let data = unsafe { T::TaskObject::take_data(task) };
   if data.pending.fetch_sub(1, Ordering::AcqRel) == 1 {
     workers.finish();
   }

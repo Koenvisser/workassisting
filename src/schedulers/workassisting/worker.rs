@@ -8,6 +8,7 @@ use crate::utils::ptr::AtomicTaggedPtr;
 use crate::utils::ptr::TaggedPtr;
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
 use crate::scheduler::Workers as WorkersTrait;
+use crate::scheduler::Scheduler as SchedulerTrait;
 
 pub struct Workers<'a> {
   is_finished: &'a AtomicBool,
@@ -34,6 +35,21 @@ impl<'a> WorkersTrait<'a> for Workers<'a> {
 
   fn push_task(&self, task: Task) {
     self.push_task(task);
+  }
+}
+
+pub struct Scheduler;
+
+impl SchedulerTrait for Scheduler {
+  type Workers<'a> = Workers<'a>;
+  type Task = Task;
+
+  fn get_name(&self) -> &'static str {
+    "Work assisting"
+  }
+
+  fn run(&self, worker_count: usize, initial_task: Task) {
+    Workers::run(worker_count, initial_task);
   }
 }
 
