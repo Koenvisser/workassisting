@@ -1,8 +1,6 @@
 use core::sync::atomic::{Ordering, AtomicU64};
 use crate::cases::compact::{compact_sequential, count_sequential};
-use crate::core::worker::*;
-use crate::core::task::*;
-use crate::schedulers::workassisting_loop::*;
+use crate::scheduler::*;
 use super::our::{BLOCK_SIZE, BlockInfo, reset, STATE_AGGREGATE_AVAILABLE, STATE_PREFIX_AVAILABLE};
 
 #[derive(Copy, Clone)]
@@ -13,16 +11,20 @@ struct Data<'a> {
   outputs: &'a [Box<[AtomicU64]>]
 }
 
-pub fn create_task(mask: u64, inputs: &[Box<[u64]>], temps: &[Box<[BlockInfo]>], outputs: &[Box<[AtomicU64]>]) -> Task {
+pub fn create_task<S, T>(mask: u64, inputs: &[Box<[u64]>], temps: &[Box<[BlockInfo]>], outputs: &[Box<[AtomicU64]>]) -> T 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
   assert!(inputs.len() != 0);
   reset(&temps[0]);
-  Task::new_dataparallel::<Data>(run, finish, Data{ mask, inputs, temps, outputs }, ((inputs[0].len() as u64 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
+  T::new_dataparallel::<Data>(run, finish::<S, T>, Data{ mask, inputs, temps, outputs }, ((inputs[0].len() as u64 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
 }
 
-fn run(_workers: &Workers, task: *const TaskObject<Data>, loop_arguments: LoopArguments) {
-  let data = unsafe { TaskObject::get_data(task) };
+fn run<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
+  let data = unsafe { T::TaskObject::get_data(task) };
   let mut sequential = true;
-  workassisting_loop!(loop_arguments, |block_index| {
+  T::work_loop(loop_arguments, |block_index| {
     let input = &data.inputs[0];
     let temp = &data.temps[0];
     let output = &data.outputs[0];
@@ -84,11 +86,15 @@ fn run(_workers: &Workers, task: *const TaskObject<Data>, loop_arguments: LoopAr
   });
 }
 
-fn finish(workers: &Workers, task: *mut TaskObject<Data>) {
-  let data = unsafe { TaskObject::take_data(task) };
+fn finish<'a, 'b, S, T>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Data>) 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
+  let data = unsafe { T::TaskObject::take_data(task) };
   if data.inputs.len() == 1 {
     workers.finish();
   } else {
-    workers.push_task(create_task(data.mask, &data.inputs[1..], &data.temps[1..], &data.outputs[1..]));
+    workers.push_task(create_task::<S, T>(data.mask, &data.inputs[1..], &data.temps[1..], &data.outputs[1..]));
   }
 }

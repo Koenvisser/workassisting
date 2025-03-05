@@ -32,7 +32,7 @@ const INNER_BLOCK_SIZE_COLUMNS: usize = 32;
 // The matrix size should be a multiple of OUTER_BLOCK_SIZE.
 // OUTER_BLOCK_SIZE should be a multiple of BORDER_BLOCK_SIZE, INNER_BLOCK_SIZE_ROWS and INNER_BLOCK_SIZE_COLUMNS.
 
-pub fn create_task<'a, S, T>(matrices: &[(SquareMatrix, AtomicU64, AtomicU64)], pending: &AtomicU64) -> T 
+pub fn create_task<S, T>(matrices: &[(SquareMatrix, AtomicU64, AtomicU64)], pending: &AtomicU64) -> T 
   where 
     S: Scheduler<Task=T>,
     T: Task

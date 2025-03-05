@@ -5,14 +5,14 @@
 // }
 
 pub trait Scheduler {
-  type Workers<'a>: Workers<'a> where Self: Sized;
+  type Workers<'a>: Workers<'a, Task = Self::Task> where Self: Sized;
   type Task: Task where Self: Sized;
   fn get_name(&self) -> &'static str;
   fn run(&self, worker_count: usize, initial_task: Self::Task) where Self: Sized;
 }
 
 pub trait Workers<'a> {
-  type Task: Task;
+  type Task: Task<Workers<'a> = Self> where Self: Sized;
 
   fn run(worker_count: usize, initial_task: Self::Task) where Self: Sized;
 

@@ -40,7 +40,7 @@ pub fn find_affinities() -> Box<[usize]> {
       -> () 
     where S: SchedulerTrait {
       let pending = AtomicUsize::new(array_count + 1);
-      let task = our::create_initial_task(mask, inputs, temps, outputs, &pending);
+      let task = our::create_initial_task::<S, S::Task>(mask, inputs, temps, outputs, &pending);
       S::Workers::run_on(affities, task);
   }
 
@@ -92,7 +92,7 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
       -> Benchmarker<()> 
     where S: SchedulerTrait {
       return benchmark.parallel("Outer parallelism", ChartLineStyle::SequentialPartition, |thread_count| {
-        let task = outer::create_task(mask, inputs, outputs);
+        let task = outer::create_task::<S, S::Task>(mask, inputs, outputs);
         scheduler.run(thread_count, task);
       });
   }
@@ -107,7 +107,7 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
       -> Benchmarker<()> 
     where S: SchedulerTrait {
       return benchmark.parallel("Inner parallelism", ChartLineStyle::Static, |thread_count| {
-        let task = inner::create_task(mask, inputs, temps, outputs);
+        let task = inner::create_task::<S, S::Task>(mask, inputs, temps, outputs);
         scheduler.run(thread_count, task);
       });
   }
@@ -124,7 +124,7 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
     where S: SchedulerTrait {
       return benchmark.our(|thread_count| {
         let pending = AtomicUsize::new(array_count + 1);
-        let task = our::create_initial_task(mask, inputs, temps, outputs, &pending);
+        let task = our::create_initial_task::<S, S::Task>(mask, inputs, temps, outputs, &pending);
         scheduler.run(thread_count, task);
       });
   }
