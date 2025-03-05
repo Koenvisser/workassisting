@@ -1,11 +1,13 @@
 use core::sync::atomic::{Ordering, AtomicU32, AtomicU64};
 use num_format::{Locale, ToFormattedString};
 use crate::scheduler::*;
-use crate::workassisting_loop;
+use crate::schedulers::workassisting::worker::Workers as DefWorkers;
+use crate::for_each_scheduler_with_arg;
 use crate::specialize_if;
 use crate::utils::array::alloc_undef_u32_array;
-use crate::utils::benchmark::ChartLineStyle;
+use crate::utils::benchmark::{Benchmarker, ChartLineStyle};
 use crate::utils::benchmark::{benchmark, ChartStyle, Nesting};
+use crate::utils::thread;
 
 pub mod our;
 pub mod deque_parallel_partition;
@@ -26,7 +28,7 @@ fn run_on(open_mp_enabled: bool, size: usize) {
   let array1 = unsafe { alloc_undef_u32_array(size) };
   let array2 = unsafe { alloc_undef_u32_array(size) };
   let name = "Sort (n = ".to_owned() + &size.to_formatted_string(&Locale::en) + ")";
-  benchmark(
+  let mut benchmark = benchmark(
     if size == 1024 * 1024 { ChartStyle::WithoutKey } else { ChartStyle::WithKey },
     16,
     &name,
@@ -34,7 +36,7 @@ fn run_on(open_mp_enabled: bool, size: usize) {
   )
   .parallel("Sequential partition", ChartLineStyle::SequentialPartition, |thread_count| {
     let pending_tasks = AtomicU64::new(1);
-    Workers::run(thread_count, create_task_reset(&array1, &pending_tasks, Kind::OnlyTaskParallel));
+    DefWorkers::run(thread_count, create_task_reset(&array1, &pending_tasks, Kind::OnlyTaskParallel));
     assert_eq!(pending_tasks.load(Ordering::Relaxed), 0);
     output(&array1)
   })
@@ -43,12 +45,25 @@ fn run_on(open_mp_enabled: bool, size: usize) {
     output(&array2)
   })
   .open_mp(open_mp_enabled, "OpenMP (nested loops)", ChartLineStyle::OmpDynamic, "quicksort", Nesting::Nested, size, None)
-  .open_mp(open_mp_enabled, "OpenMP (tasks)", ChartLineStyle::OmpTask, "quicksort-taskloop", Nesting::Flat, size, None)
-  .our(|thread_count| {
-    let pending_tasks = AtomicU64::new(1);
-    Workers::run(thread_count, create_task_reset(&array1, &pending_tasks, Kind::DataParallel(&array2)));
-    output(&array2)
-  });
+  .open_mp(open_mp_enabled, "OpenMP (tasks)", ChartLineStyle::OmpTask, "quicksort-taskloop", Nesting::Flat, size, None);
+
+  for_each_scheduler_with_arg!(benchmark_our, benchmark, &array1, &array2);
+
+  fn benchmark_our<S>(
+    scheduler: S,
+    benchmark: Benchmarker<u64>,
+    array1: &Box<[AtomicU32]>,
+    array2: &Box<[AtomicU32]>
+  ) -> Benchmarker<u64>
+  where
+    S: Scheduler
+  {
+    return benchmark.our(|thread_count| {
+      let pending_tasks = AtomicU64::new(1);
+      scheduler.run(thread_count, create_task_reset(array1, &pending_tasks, Kind::DataParallel(array2)));
+      output(array2)
+    });
+  }
 }
 
 pub fn random(mut seed: u64) -> u32 {
@@ -62,9 +77,9 @@ pub fn random(mut seed: u64) -> u32 {
   (seed & 0xFFFFFFFF) as u32
 }
 
-fn create_task_reset(array: &[AtomicU32], pending_tasks: &AtomicU64, kind: Kind) -> Task {
+fn create_task_reset<T:Task>(array: &[AtomicU32], pending_tasks: &AtomicU64, kind: Kind) -> T {
   let data = Reset{ array, pending_tasks, kind };
-  Task::new_dataparallel(reset_run, reset_finish, data, ((array.len() + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
+  T::new_dataparallel(reset_run, reset_finish, data, ((array.len() + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
 }
 
 struct Reset<'a> {
@@ -79,18 +94,18 @@ enum Kind<'a> {
   DataParallel(&'a [AtomicU32])
 }
 
-fn reset_run(_workers: &Workers, task: *const TaskObject<Reset>, loop_arguments: LoopArguments) {
+fn reset_run<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Reset>, loop_arguments: T::LoopArguments<'c>) {
   let data = unsafe { TaskObject::get_data(task) };
 
-  workassisting_loop!(loop_arguments, |chunk_index| {
+  T::work_loop(loop_arguments, |chunk_index| {
     for index in chunk_index as usize * BLOCK_SIZE .. ((chunk_index as usize + 1) * BLOCK_SIZE).min(data.array.len()) {
       data.array[index as usize].store(random(index as u64), Ordering::Relaxed);
     }
   });
 }
 
-fn reset_finish(workers: &Workers, task: *mut TaskObject<Reset>) {
-  let data = unsafe { TaskObject::take_data(task) };
+fn reset_finish<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Reset>) {
+  let data = unsafe { T::TaskObject::take_data(task) };
 
   match data.kind {
     Kind::OnlyTaskParallel => {

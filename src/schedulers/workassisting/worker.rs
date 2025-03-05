@@ -7,6 +7,7 @@ use crate::utils;
 use crate::utils::ptr::AtomicTaggedPtr;
 use crate::utils::ptr::TaggedPtr;
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
+use crate::scheduler::Workers as WorkersTrait;
 
 pub struct Workers<'a> {
   is_finished: &'a AtomicBool,
@@ -14,6 +15,26 @@ pub struct Workers<'a> {
   worker: deque::Worker<Task>,
   stealers: &'a [deque::Stealer<Task>],
   activities: &'a [AtomicTaggedPtr<TaskObject<()>>]
+}
+
+impl<'a> WorkersTrait<'a> for Workers<'a> {
+  type Task = Task;
+
+  fn run(worker_count: usize, initial_task: Task) {
+    Workers::run(worker_count, initial_task);
+  }
+
+  fn run_on(affinities: &[usize], initial_task: Task) {
+    Workers::run_on(affinities, initial_task);
+  }
+
+  fn finish(&self) {
+    self.finish();
+  }
+
+  fn push_task(&self, task: Task) {
+    self.push_task(task);
+  }
 }
 
 impl<'a> Workers<'a> {
@@ -167,15 +188,24 @@ impl<'a> Workers<'a> {
 
       // We can assist this thread
       let task = unsafe { &*activity.ptr() };
-      let signal = EmptySignal{ pointer: &self.activities[other_index], task, state: EmptySignalState::Assist };
+      let mut signal = EmptySignal{ pointer: &self.activities[other_index], task, state: EmptySignalState::Assist };
 
-      self.call_task(activity.ptr(), signal);
+      // Claim the first chunk
+      let current_index = task.work_index.fetch_add(1, Ordering::Acquire);
+
+      // Early out.
+      if current_index >= task.work_size {
+        signal.task_empty();
+        self.end_task(task);
+        return true;
+      }
+      self.call_task(task, signal, current_index);
       return true;
     }
   }
 
   fn start_task(&self, task: Task, thread_index: usize) {
-    if task.work_size.is_empty() {
+    if task.work_size == 0 {
       // This task doesn't have data parallelism.
       // Hence task.work doesn't need to be called,
       // only task.finish.
@@ -200,15 +230,14 @@ impl<'a> Workers<'a> {
     self.activities[thread_index].store(TaggedPtr::new(task_ptr, 0), Ordering::Release);
 
     let signal = EmptySignal{ pointer: &self.activities[thread_index], task: task_ref, state: EmptySignalState::Main };
-    self.call_task(unsafe { &*task_ptr }, signal);
+    self.call_task(unsafe { &*task_ptr }, signal, 0);
   }
 
   // Calls the work function of a task, and calls end_task afterwards
-  fn call_task(&self, task: *const TaskObject<()>, signal: EmptySignal) {
+  fn call_task(&self, task: *const TaskObject<()>, signal: EmptySignal, first_index: u32) {
     let task_ref = unsafe { &*task };
-    // println!("Call: {} {:?}", first_index, task_ref.work_indexes.read().unwrap());
-    (task_ref.work.unwrap())(self, task, LoopArguments{ work_size: &task_ref.work_size, work_indexes: &task_ref.work_indexes, work_indexes_index: &task_ref.work_indexes_index, empty_signal: signal});
-    self.end_task(task); 
+    (task_ref.work.unwrap())(self, task, LoopArguments{ work_size: task_ref.work_size, work_index: &task_ref.work_index, empty_signal: signal, first_index });
+    self.end_task(task);
   }
 
   fn end_task(&self, task: *const TaskObject<()>) {
