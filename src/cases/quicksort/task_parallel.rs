@@ -4,14 +4,11 @@
 // - Two sections are sorted in parallel with task parallelism
 
 use core::sync::atomic::{Ordering, AtomicU32, AtomicU64};
-
-use crate::core::task::{Task, TaskObject};
-use crate::core::worker::Workers;
-
+use crate::scheduler::*;
 use crate::cases::quicksort::{SEQUENTIAL_CUTOFF, count_recursive_calls};
 use crate::cases::quicksort::sequential;
 
-pub fn create_task<'a>(pending_tasks: &'a AtomicU64, array: &'a [AtomicU32]) -> Option<Task> {
+pub fn create_task<'a, T:Task>(pending_tasks: &'a AtomicU64, array: &'a [AtomicU32]) -> Option<T> {
   if array.len() <= 1 {
     return None
   }
@@ -25,7 +22,7 @@ pub fn create_task<'a>(pending_tasks: &'a AtomicU64, array: &'a [AtomicU32]) -> 
     array
   };
 
-  Some(Task::new_single(run, data))
+  Some(T::new_single(run, data))
 }
 
 pub struct Sort<'a> {
@@ -33,12 +30,12 @@ pub struct Sort<'a> {
   pub array: &'a [AtomicU32],
 }
 
-pub fn run(workers: &Workers, task: *mut TaskObject<Sort>) {
-  let data = unsafe { TaskObject::take_data(task) };
-  run_go(workers, data.pending_tasks, data.array);
+pub fn run<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Sort>) {
+  let data = unsafe { T::TaskObject::take_data(task) };
+  run_go::<T>(workers, data.pending_tasks, data.array);
 }
 
-fn run_go(workers: &Workers, pending_tasks: &AtomicU64, array: &[AtomicU32]) {
+fn run_go<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, pending_tasks: &AtomicU64, array: &[AtomicU32]) {
   let array = array;
   assert!(array.len() > 1);
 
@@ -89,10 +86,10 @@ pub struct SortWithCopy<'a> {
   pub output: &'a [AtomicU32]
 }
 
-pub fn run_with_copy(workers: &Workers, task: *mut TaskObject<SortWithCopy>) {
-  let data = unsafe { TaskObject::take_data(task) };
+pub fn run_with_copy<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<SortWithCopy>) {
+  let data = unsafe { T::TaskObject::take_data(task) };
   for i in 0 .. data.output.len() {
     data.output[i].store(data.input[i].load(Ordering::Relaxed), Ordering::Relaxed);
   }
-  run_go(workers, data.pending_tasks, data.output);
+  run_go::<T>(workers, data.pending_tasks, data.output);
 }

@@ -4,9 +4,7 @@
 // - Two sections are sorted sequentially with two recursive calls
 
 use core::sync::atomic::{Ordering, AtomicU32, AtomicU64};
-
-use crate::core::worker::Workers;
-use crate::core::task::{Task, TaskObject};
+use crate::scheduler::*;
 
 const INSERTION_SORT_CUTOFF: usize = 20;
 
@@ -85,8 +83,8 @@ struct SequentialSort<'a> {
   output: Option<&'a [AtomicU32]>
 }
 
-fn sequential_sort_run(workers: &Workers, task: *mut TaskObject<SequentialSort>) {
-  let data = unsafe { TaskObject::take_data(task) };
+fn sequential_sort_run<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<SequentialSort>) {
+  let data = unsafe { T::TaskObject::take_data(task) };
   let array = if let Some(output) = data.output {
     for i in 0 .. output.len() {
       output[i].store(data.input[i].load(Ordering::Relaxed), Ordering::Relaxed);
@@ -103,11 +101,11 @@ fn sequential_sort_run(workers: &Workers, task: *mut TaskObject<SequentialSort>)
   }
 }
 
-pub fn create_task<'a>(pending_tasks: &'a AtomicU64, input: &'a [AtomicU32], output: Option<&'a [AtomicU32]>) -> Task {
+pub fn create_task<'a, T:Task>(pending_tasks: &'a AtomicU64, input: &'a [AtomicU32], output: Option<&'a [AtomicU32]>) -> T {
   let data = SequentialSort{
     pending_tasks,
     input,
     output
   };
-  Task::new_single(sequential_sort_run, data)
+  T::new_single(sequential_sort_run, data)
 }
