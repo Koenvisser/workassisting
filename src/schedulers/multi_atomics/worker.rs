@@ -44,7 +44,7 @@ impl SchedulerTrait for Scheduler {
   type Workers<'a> = Workers<'a>;
   type Task = Task;
 
-  fn get_name(&self) -> &'static str {
+  fn get_name() -> &'static str {
     "Multi-atomics"
   }
 

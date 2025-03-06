@@ -1,8 +1,8 @@
 #[macro_export]
 macro_rules! for_each_scheduler {
-  ($body: expr $(, $arg: expr)*) => {
-    $body(crate::schedulers::multi_atomics::worker::Scheduler $(, $arg)*);
-    $body(crate::schedulers::workassisting::worker::Scheduler $(, $arg)*);
+  ($body: ident $(, $arg: expr)*) => {
+    $body::<crate::schedulers::multi_atomics::worker::Scheduler>($($arg),*);
+    $body::<crate::schedulers::workassisting::worker::Scheduler>($($arg),*);
   };
 }
 pub(crate) use for_each_scheduler;

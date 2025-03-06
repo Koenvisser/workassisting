@@ -1,6 +1,6 @@
 use core::panic;
 use core::sync::atomic::AtomicU64;
-use crate::scheduler::Scheduler as SchedulerTrait;
+use crate::scheduler::{Scheduler, Workers};
 use crate::utils::matrix::SquareMatrix;
 use crate::utils::benchmark::Benchmarker;
 use crate::for_each_scheduler;
@@ -29,13 +29,15 @@ pub fn run(openmp_enabled: bool) {
     result.0
   });
 
-  fn test_schedulers<S>(scheduler: S)
-    where S: SchedulerTrait
+  test_schedulers::<crate::schedulers::workassisting::worker::Scheduler>();
+
+  fn test_schedulers<S>()
+    where S: Scheduler
    {
-    test(scheduler.get_name(), |matrix| {
+    test(S::get_name(), |matrix| {
       let pending = AtomicU64::new(0);
       let mut matrices = vec![(matrix, AtomicU64::new(0), AtomicU64::new(0))];
-      scheduler.run(2, our::create_task::<S, S::Task>(&matrices, &pending));
+      S::Workers::run(2, our::create_task::<S, S::Task>(&matrices, &pending));
       let result = matrices.pop().unwrap();
       result.0
     });
@@ -96,13 +98,13 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
     matrices: &mut Vec<(SquareMatrix, AtomicU64, AtomicU64)>,
     pending: &AtomicU64
   ) -> Benchmarker<()> 
-  where S: SchedulerTrait
+  where S: Scheduler
   {
     return benchmark.our(|thread_count| {
       for i in 0 .. matrix_count {
         input.copy_to(&mut matrices[i].0);
       }
-      scheduler.run(thread_count, our::create_task::<S, S::Task>(&matrices, &pending));
+      S::Workers::run(thread_count, our::create_task::<S, S::Task>(&matrices, &pending));
     });
   }
 

@@ -7,7 +7,7 @@
 pub trait Scheduler {
   type Workers<'a>: Workers<'a, Task = Self::Task> where Self: Sized;
   type Task: Task where Self: Sized;
-  fn get_name(&self) -> &'static str;
+  fn get_name() -> &'static str;
   fn run(&self, worker_count: usize, initial_task: Self::Task) where Self: Sized;
 }
 

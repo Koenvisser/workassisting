@@ -30,7 +30,6 @@ pub fn find_affinities() -> Box<[usize]> {
   });
 
   fn run_our<S>(
-    scheduler: S, 
     mask: u64, 
     inputs: &[Box<[u64]>], 
     temps: &Vec<Box<[BlockInfo]>>,
