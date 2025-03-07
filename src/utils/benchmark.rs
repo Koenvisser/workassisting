@@ -35,7 +35,8 @@ pub enum ChartLineStyle {
   Static,
   StaticPinned,
   Rayon,
-  SequentialPartition
+  SequentialPartition,
+  MultiAtomics,
 }
 
 fn chart_line_style_to_str(style: ChartLineStyle) -> &'static str {
@@ -58,6 +59,8 @@ fn chart_line_style_to_str(style: ChartLineStyle) -> &'static str {
       => "pointsize 0.7 lw 1 pt 1 linecolor rgb \"#6E3B23\"",
     ChartLineStyle::SequentialPartition
       => "pointsize 0.7 lw 1 pt 1 linecolor rgb \"#24A793\"",
+    ChartLineStyle::MultiAtomics
+      => "pointsize 0.7 lw 2 pt 1 linecolor rgb \"#A7E310\"",
   }
 }
 

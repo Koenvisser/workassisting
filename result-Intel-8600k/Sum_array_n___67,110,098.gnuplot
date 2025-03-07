@@ -16,5 +16,5 @@ plot './results/Sum_array_n___67,110,098.dat' using 1:2 title "Rayon" pointsize 
   './results/Sum_array_n___67,110,098.dat' using 1:6 title "OpenMP (static)" pointsize 0.7 lw 1 pt 5 linecolor rgb "#FFCD00" with linespoints, \
   './results/Sum_array_n___67,110,098.dat' using 1:7 title "OpenMP (dynamic)" pointsize 0.7 lw 1 pt 4 linecolor rgb "#001240" with linespoints, \
   './results/Sum_array_n___67,110,098.dat' using 1:8 title "OpenMP (taskloop)" pointsize 0.7 lw 1 pt 12 linecolor rgb "#F3965E" with linespoints, \
-  './results/Sum_array_n___67,110,098.dat' using 1:9 title "Multi-atomics" pointsize 0.7 lw 1 pt 1 linecolor rgb "#6E3B23" with linespoints, \
+  './results/Sum_array_n___67,110,098.dat' using 1:9 title "Multi-atomics" pointsize 0.7 lw 2 pt 1 linecolor rgb "#A7E310" with linespoints, \
   './results/Sum_array_n___67,110,098.dat' using 1:10 title "Work assisting" pointsize 0.4 lw 2 pt 7 linecolor rgb "#C00A35" with linespoints

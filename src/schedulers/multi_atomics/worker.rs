@@ -50,7 +50,7 @@ impl SchedulerTrait for Scheduler {
   }
 
   fn get_chart_line_style() -> ChartLineStyle {
-    ChartLineStyle::Rayon
+    ChartLineStyle::MultiAtomics
   }
 }
 
