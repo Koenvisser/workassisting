@@ -102,10 +102,6 @@ impl<T: Copy + Debug + Eq + Send> Benchmarker<T> {
   pub fn work_stealing<Par: FnMut(usize) -> T>(self, parallel: Par) -> Self {
     self.parallel("Work stealing", ChartLineStyle::WorkStealing, parallel)
   }
-  
-  pub fn our<Par: FnMut(usize) -> T>(self, parallel: Par) -> Self {
-    self.parallel("Work assisting (our)", ChartLineStyle::WorkAssisting, parallel)
-  }
 
   pub fn sequential<Seq: FnMut() -> T>(self, name: &str, sequential: Seq) -> Self {
     let (value, time) = time(100, sequential);

@@ -100,7 +100,7 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
     array_count: usize)
       -> Benchmarker<()> 
     where S: SchedulerTrait {
-      return benchmark.our(|thread_count| {
+      return benchmark.parallel(S::get_name(), S::get_chart_line_style(), |thread_count| {
         let pending = AtomicUsize::new(array_count + 1);
         let task = our::create_initial_task::<S, S::Task>(mask, inputs, temps, outputs, &pending);
         S::Workers::run(thread_count, task);

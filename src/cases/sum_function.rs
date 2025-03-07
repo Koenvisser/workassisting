@@ -40,7 +40,7 @@ pub fn run(open_mp_enabled: bool) {
     where
       S: Scheduler
     {
-      return benchmark.our(|thread_count| {
+      return benchmark.parallel(S::get_name(), S::get_chart_line_style(), |thread_count| {
         let counter = AtomicU64::new(0);
         let task = our::create_task(&counter, START, count);
         S::Workers::run(thread_count, task);
