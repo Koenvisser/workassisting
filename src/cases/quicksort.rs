@@ -7,7 +7,6 @@ use crate::specialize_if;
 use crate::utils::array::alloc_undef_u32_array;
 use crate::utils::benchmark::{Benchmarker, ChartLineStyle};
 use crate::utils::benchmark::{benchmark, ChartStyle, Nesting};
-use crate::utils::thread;
 
 pub mod our;
 pub mod deque_parallel_partition;
