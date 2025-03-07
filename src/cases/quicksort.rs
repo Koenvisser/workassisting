@@ -1,7 +1,7 @@
 use core::sync::atomic::{Ordering, AtomicU32, AtomicU64};
 use num_format::{Locale, ToFormattedString};
 use crate::scheduler::*;
-use crate::schedulers::workassisting::worker::Workers as DefWorkers;
+use crate::schedulers::workassisting::worker::Workers as WorkAssisting;
 use crate::for_each_scheduler_with_arg;
 use crate::specialize_if;
 use crate::utils::array::alloc_undef_u32_array;
@@ -36,7 +36,7 @@ fn run_on(open_mp_enabled: bool, size: usize) {
   )
   .parallel("Sequential partition", ChartLineStyle::SequentialPartition, |thread_count| {
     let pending_tasks = AtomicU64::new(1);
-    DefWorkers::run(thread_count, create_task_reset(&array1, &pending_tasks, Kind::OnlyTaskParallel));
+    WorkAssisting::run(thread_count, create_task_reset(&array1, &pending_tasks, Kind::OnlyTaskParallel));
     assert_eq!(pending_tasks.load(Ordering::Relaxed), 0);
     output(&array1)
   })
@@ -50,7 +50,6 @@ fn run_on(open_mp_enabled: bool, size: usize) {
   for_each_scheduler_with_arg!(benchmark_our, benchmark, &array1, &array2);
 
   fn benchmark_our<S>(
-    scheduler: S,
     benchmark: Benchmarker<u64>,
     array1: &Box<[AtomicU32]>,
     array2: &Box<[AtomicU32]>
@@ -60,7 +59,7 @@ fn run_on(open_mp_enabled: bool, size: usize) {
   {
     return benchmark.our(|thread_count| {
       let pending_tasks = AtomicU64::new(1);
-      scheduler.run(thread_count, create_task_reset(array1, &pending_tasks, Kind::DataParallel(array2)));
+      S::Workers::run(thread_count, create_task_reset(array1, &pending_tasks, Kind::DataParallel(array2)));
       output(array2)
     });
   }

@@ -5,6 +5,7 @@ use our::BlockInfo;
 use crate::{for_each_scheduler, for_each_scheduler_with_arg};
 use crate::scheduler::Scheduler as SchedulerTrait;
 use crate::scheduler::Workers;
+use crate::schedulers::workassisting as WorkAssisting;
 use crate::utils::benchmark::{benchmark_with_title, Benchmarker, ChartLineStyle, ChartStyle, Nesting};
 use crate::utils;
 
@@ -76,43 +77,21 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
   let title = "m = ".to_owned() + &array_count.to_formatted_string(&Locale::en);
   let mut benchmark = benchmark_with_title(if array_count == 1 { ChartStyle::SmallWithKey } else { ChartStyle::Small }, 5, &name, &title, || {
     reference_sequential(mask, &inputs, &outputs);
-  }).open_mp(open_mp_enabled, "OpenMP", ChartLineStyle::OmpDynamic, "compact", Nesting::Nested, array_count, Some(size));
+  })
+  .parallel("Outer parallelism", ChartLineStyle::SequentialPartition, |thread_count| {
+    let task = outer::create_task::<WorkAssisting::worker::Scheduler, WorkAssisting::task::Task>(mask, &inputs, &outputs);
+    WorkAssisting::worker::Workers::run(thread_count, task);
+  })
+  .parallel("Inner parallelism", ChartLineStyle::Static, |thread_count| {
+    let task = inner::create_task::<WorkAssisting::worker::Scheduler, WorkAssisting::task::Task>(mask, &inputs, &temps, &outputs);
+    WorkAssisting::worker::Workers::run(thread_count, task);
+  })
+  .open_mp(open_mp_enabled, "OpenMP", ChartLineStyle::OmpDynamic, "compact", Nesting::Nested, array_count, Some(size));
 
-  for_each_scheduler_with_arg!(benchmark_outer_parallelism, benchmark, mask, &inputs, &outputs);
-  for_each_scheduler_with_arg!(benchmark_inner_parallelism, benchmark, mask, &inputs, &temps, &outputs);
+
   for_each_scheduler_with_arg!(benchmark_our, benchmark, mask, &inputs, &temps, &outputs, array_count);
 
-  fn benchmark_outer_parallelism<S>(
-    scheduler: S, 
-    benchmark: Benchmarker<()>, 
-    mask: u64, 
-    inputs: &[Box<[u64]>], 
-    outputs: &[Box<[AtomicU64]>])
-      -> Benchmarker<()> 
-    where S: SchedulerTrait {
-      return benchmark.parallel("Outer parallelism", ChartLineStyle::SequentialPartition, |thread_count| {
-        let task = outer::create_task::<S, S::Task>(mask, inputs, outputs);
-        scheduler.run(thread_count, task);
-      });
-  }
-
-  fn benchmark_inner_parallelism<S>(
-    scheduler: S, 
-    benchmark: Benchmarker<()>, 
-    mask: u64, 
-    inputs: &[Box<[u64]>], 
-    temps: &Vec<Box<[BlockInfo]>>,
-    outputs: &[Box<[AtomicU64]>])
-      -> Benchmarker<()> 
-    where S: SchedulerTrait {
-      return benchmark.parallel("Inner parallelism", ChartLineStyle::Static, |thread_count| {
-        let task = inner::create_task::<S, S::Task>(mask, inputs, temps, outputs);
-        scheduler.run(thread_count, task);
-      });
-  }
-
   fn benchmark_our<S>(
-    scheduler: S, 
     benchmark: Benchmarker<()>, 
     mask: u64, 
     inputs: &[Box<[u64]>], 
@@ -124,7 +103,7 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
       return benchmark.our(|thread_count| {
         let pending = AtomicUsize::new(array_count + 1);
         let task = our::create_initial_task::<S, S::Task>(mask, inputs, temps, outputs, &pending);
-        scheduler.run(thread_count, task);
+        S::Workers::run(thread_count, task);
       });
   }
 }

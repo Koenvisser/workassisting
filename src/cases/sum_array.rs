@@ -36,7 +36,6 @@ pub fn run(open_mp_enabled: bool) {
     for_each_scheduler_with_arg!(benchmark_our, benchmark, &array);
 
       fn benchmark_our<S>(
-        scheduler: S,
         benchmark: Benchmarker<u64>,
         array: &Vec<u64>
       ) -> Benchmarker<u64>
@@ -46,7 +45,7 @@ pub fn run(open_mp_enabled: bool) {
         return benchmark.our(|thread_count| {
           let counter = AtomicU64::new(0);
           let task = our::create_task(&counter, array);
-          scheduler.run(thread_count, task);
+          S::Workers::run(thread_count, task);
           counter.load(Ordering::Acquire)
         })
       }

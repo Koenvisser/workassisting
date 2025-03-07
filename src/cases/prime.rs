@@ -1,6 +1,6 @@
 use core::sync::atomic::{Ordering, AtomicU32};
 use rayon::prelude::*;
-use crate::scheduler::Scheduler as SchedulerTrait;
+use crate::scheduler::{Scheduler, Workers};
 use crate::for_each_scheduler_with_arg;
 use crate::utils::benchmark::{benchmark, ChartStyle, Nesting, ChartLineStyle, Benchmarker};
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
@@ -35,16 +35,15 @@ fn run_on(open_mp_enabled: bool, style: ChartStyle, start: u64, count: u64) {
   for_each_scheduler_with_arg!(benchmark_our, benchmark, start, count);
 
   fn benchmark_our<S>(
-    scheduler: S, 
     benchmark: Benchmarker<u32>, 
     start: u64,
     count: u64
   ) -> Benchmarker<u32>
-    where S: SchedulerTrait {
+    where S: Scheduler {
       return benchmark.our(|thread_count| {
         let counter = AtomicU32::new(0);
         let task = our::create_task(&counter, start, count);
-        scheduler.run(thread_count, task);
+        S::Workers::run(thread_count, task);
         counter.load(Ordering::Acquire)
       });
     }

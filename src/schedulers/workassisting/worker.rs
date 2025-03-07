@@ -7,6 +7,7 @@ use crate::utils;
 use crate::utils::ptr::AtomicTaggedPtr;
 use crate::utils::ptr::TaggedPtr;
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
+use crate::utils::benchmark::ChartLineStyle;
 use crate::scheduler::Workers as WorkersTrait;
 use crate::scheduler::Scheduler as SchedulerTrait;
 
@@ -48,8 +49,8 @@ impl SchedulerTrait for Scheduler {
     "Work assisting"
   }
 
-  fn run(&self, worker_count: usize, initial_task: Task) {
-    Workers::run(worker_count, initial_task);
+  fn get_chart_line_style() -> ChartLineStyle {
+    ChartLineStyle::WorkAssisting
   }
 }
 

@@ -1,14 +1,10 @@
-// pub trait Scheduler {
-//   type Workers<'a>: Workers<'a>;
-//   type Task: Task;
-//   fn get_name(&self) -> &'static str;
-// }
+use crate::utils::benchmark::ChartLineStyle;
 
 pub trait Scheduler {
   type Workers<'a>: Workers<'a, Task = Self::Task> where Self: Sized;
   type Task: Task where Self: Sized;
   fn get_name() -> &'static str;
-  fn run(&self, worker_count: usize, initial_task: Self::Task) where Self: Sized;
+  fn get_chart_line_style() -> ChartLineStyle;
 }
 
 pub trait Workers<'a> {

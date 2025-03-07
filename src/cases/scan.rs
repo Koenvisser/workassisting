@@ -56,7 +56,6 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
   for_each_scheduler_with_arg!(benchmark_our, benchmark, &inputs, &temps, &outputs, array_count);
   
   fn benchmark_our<S>(
-    scheduler: S,
     benchmark: Benchmarker<()>,
     inputs: &Vec<Box<[u64]>>,
     temps: &Vec<Box<[BlockInfo]>>,
@@ -69,7 +68,7 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
     return benchmark.our(|thread_count| {
       let pending = AtomicUsize::new(array_count + 1);
       let task = our::create_initial_task(inputs, temps, outputs, &pending);
-      scheduler.run(thread_count, task);
+      S::Workers::run(thread_count, task);
     })
   }
 }

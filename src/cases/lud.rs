@@ -91,7 +91,6 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
   for_each_scheduler_with_arg!(benchmark_our, benchmark, matrix_count, input.clone(), &mut matrices, &pending);
   
   fn benchmark_our<S>(
-    scheduler: S, 
     benchmark: Benchmarker<()>, 
     matrix_count: usize, 
     input: SquareMatrix,
@@ -100,7 +99,7 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
   ) -> Benchmarker<()> 
   where S: Scheduler
   {
-    return benchmark.our(|thread_count| {
+    return benchmark.parallel(S::get_name(), S::get_chart_line_style(), |thread_count| {
       for i in 0 .. matrix_count {
         input.copy_to(&mut matrices[i].0);
       }
