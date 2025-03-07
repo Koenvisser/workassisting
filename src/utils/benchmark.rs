@@ -2,8 +2,6 @@ use core::fmt::Debug;
 use std::time;
 use std::fs::File;
 use std::io::{prelude::*, BufWriter};
-use crate::for_each_scheduler;
-use crate::scheduler::Scheduler as SchedulerTrait;
 use crate::utils;
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
 
