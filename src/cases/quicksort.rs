@@ -56,7 +56,7 @@ fn run_on(open_mp_enabled: bool, size: usize) {
   where
     S: Scheduler
   {
-    return benchmark.parallel(S::get_name(), S::get_chart_line_style(), |thread_count| {
+    return benchmark.parallel(&S::get_name(), S::get_chart_line_style(), |thread_count| {
       let pending_tasks = AtomicU64::new(1);
       S::Workers::run(thread_count, create_task_reset(array1, &pending_tasks, Kind::DataParallel(array2)));
       output(array2)

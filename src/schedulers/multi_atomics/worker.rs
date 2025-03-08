@@ -11,62 +11,62 @@ use crate::utils::benchmark::ChartLineStyle;
 use crate::scheduler::Workers as WorkersTrait;
 use crate::scheduler::Scheduler as SchedulerTrait;
 
-pub struct Workers<'a> {
+pub struct Workers<'a, const ATOMICS: usize, const MIN_CHUNKS: usize> {
   is_finished: &'a AtomicBool,
   worker_count: usize,
-  worker: deque::Worker<Task>,
-  stealers: &'a [deque::Stealer<Task>],
-  activities: &'a [AtomicTaggedPtr<TaskObject<()>>]
+  worker: deque::Worker<Task<ATOMICS, MIN_CHUNKS>>,
+  stealers: &'a [deque::Stealer<Task<ATOMICS, MIN_CHUNKS>>],
+  activities: &'a [AtomicTaggedPtr<TaskObject<(), ATOMICS, MIN_CHUNKS>>]
 }
 
-impl<'a> WorkersTrait<'a> for Workers<'a> {
-  type Task = Task;
+impl<'a, const ATOMICS: usize, const MIN_CHUNKS: usize> WorkersTrait<'a> for Workers<'a, ATOMICS, MIN_CHUNKS> {
+  type Task = Task<ATOMICS, MIN_CHUNKS>;
 
-  fn run(worker_count: usize, initial_task: Task) {
-    Workers::run(worker_count, initial_task);
+  fn run(worker_count: usize, initial_task: Task<ATOMICS, MIN_CHUNKS>) {
+    Workers::<ATOMICS, MIN_CHUNKS>::run(worker_count, initial_task);
   }
 
-  fn run_on(affinities: &[usize], initial_task: Task) {
-    Workers::run_on(affinities, initial_task);
+  fn run_on(affinities: &[usize], initial_task: Task<ATOMICS, MIN_CHUNKS>) {
+    Workers::<ATOMICS, MIN_CHUNKS>::run_on(affinities, initial_task);
   }
 
   fn finish(&self) {
     self.finish();
   }
 
-  fn push_task(&self, task: Task) {
+  fn push_task(&self, task: Task<ATOMICS, MIN_CHUNKS>) {
     self.push_task(task);
   }
 }
 
-pub struct Scheduler;
+pub struct Scheduler<const ATOMICS: usize, const MIN_CHUNKS: usize>;
 
-impl SchedulerTrait for Scheduler {
-  type Workers<'a> = Workers<'a>;
-  type Task = Task;
+impl<const ATOMICS: usize, const MIN_CHUNKS: usize> SchedulerTrait for Scheduler<ATOMICS, MIN_CHUNKS> {
+  type Workers<'a> = Workers<'a, ATOMICS, MIN_CHUNKS>;
+  type Task = Task<ATOMICS, MIN_CHUNKS>;
 
-  fn get_name() -> &'static str {
-    "Multi-atomics"
+  fn get_name() -> String {
+    format!("Multi-atomics {} {}", ATOMICS, MIN_CHUNKS)
   }
 
   fn get_chart_line_style() -> ChartLineStyle {
-    ChartLineStyle::MultiAtomics
+    ChartLineStyle::Dynamic(ATOMICS, MIN_CHUNKS)
   }
 }
 
-impl<'a> Workers<'a> {
-  pub fn run(worker_count: usize, initial_task: Task) {
-    Workers::run_on(&AFFINITY_MAPPING[0 .. worker_count], initial_task);
+impl<'a, const ATOMICS: usize, const MIN_CHUNKS: usize> Workers<'a, ATOMICS, MIN_CHUNKS> {
+  pub fn run(worker_count: usize, initial_task: Task<ATOMICS, MIN_CHUNKS>) {
+    Workers::<ATOMICS, MIN_CHUNKS>::run_on(&AFFINITY_MAPPING[0 .. worker_count], initial_task);
   }
 
-  pub fn run_on(affinities: &[usize], initial_task: Task) {
+  pub fn run_on(affinities: &[usize], initial_task: Task<ATOMICS, MIN_CHUNKS>) {
     let worker_count = affinities.len();
-    let workers: Vec<deque::Worker<Task>> = (0 .. worker_count).into_iter().map(|_| deque::Worker::new_lifo()).collect();
-    let stealers: Box<[deque::Stealer<Task>]> = workers.iter().map(|w| w.stealer()).collect();
+    let workers: Vec<deque::Worker<Task<ATOMICS, MIN_CHUNKS>>> = (0 .. worker_count).into_iter().map(|_| deque::Worker::new_lifo()).collect();
+    let stealers: Box<[deque::Stealer<Task<ATOMICS, MIN_CHUNKS>>]> = workers.iter().map(|w| w.stealer()).collect();
 
     workers[0].push(initial_task);
 
-    let activities: Box<[AtomicTaggedPtr<TaskObject<()>>]> = unsafe {
+    let activities: Box<[AtomicTaggedPtr<TaskObject<(), ATOMICS, MIN_CHUNKS>>]> = unsafe {
       std::mem::transmute(vec![0 as usize; worker_count].into_boxed_slice())
     };
 
@@ -90,7 +90,7 @@ impl<'a> Workers<'a> {
       affinity::set_thread_affinity(full).unwrap();
     }); */
     let threads: Vec<libc::pthread_t> = workers.into_iter().enumerate().map(|(thread_index, worker)| {
-      let workers = Workers{
+      let workers: Workers<'_, ATOMICS, MIN_CHUNKS> = Workers{
         is_finished: &is_finished,
         worker_count,
         worker,
@@ -114,7 +114,7 @@ impl<'a> Workers<'a> {
     self.is_finished.store(true, Ordering::Release);
   }
 
-  pub fn push_task(&self, task: Task) {
+  pub fn push_task(&self, task: Task<ATOMICS, MIN_CHUNKS>) {
     self.worker.push(task);
   }
 
@@ -147,7 +147,7 @@ impl<'a> Workers<'a> {
     }
   }
 
-  fn claim_task(&self, thread_index: usize) -> Steal<Task> {
+  fn claim_task(&self, thread_index: usize) -> Steal<Task<ATOMICS, MIN_CHUNKS>> {
     // First we try to claim a task from our own deque.
     if let Some(item) = self.worker.pop() {
       return Steal::Success(item)
@@ -212,7 +212,7 @@ impl<'a> Workers<'a> {
     }
   }
 
-  fn start_task(&self, task: Task, thread_index: usize) {
+  fn start_task(&self, task: Task<ATOMICS, MIN_CHUNKS>, thread_index: usize) {
     if task.work_size.is_empty() {
       // This task doesn't have data parallelism.
       // Hence task.work doesn't need to be called,
@@ -221,11 +221,11 @@ impl<'a> Workers<'a> {
       // as it is never pushed to the 'activities' list.
       // Hence we can take unique ownership of this task here,
       // and pass it to finish.
-      let task_ref: *const TaskObject<()> = &*task;
+      let task_ref: *const TaskObject<(), ATOMICS, MIN_CHUNKS> = &*task;
       let finish = task.finish;
       // task.finish will drop the object. Hence we shouldn't do that here.
       std::mem::forget(task);
-      (finish)(self, task_ref as *mut TaskObject<()>);
+      (finish)(self, task_ref as *mut TaskObject<(), ATOMICS, MIN_CHUNKS>);
       return;
     }
 
@@ -242,14 +242,14 @@ impl<'a> Workers<'a> {
   }
 
   // Calls the work function of a task, and calls end_task afterwards
-  fn call_task(&self, task: *const TaskObject<()>, signal: EmptySignal) {
+  fn call_task(&self, task: *const TaskObject<(), ATOMICS, MIN_CHUNKS>, signal: EmptySignal<ATOMICS, MIN_CHUNKS>) {
     let task_ref = unsafe { &*task };
     // println!("Call: {} {:?}", first_index, task_ref.work_indexes.read().unwrap());
     (task_ref.work.unwrap())(self, task, LoopArguments{ work_size: &task_ref.work_size, work_indexes: &task_ref.work_indexes, work_indexes_index: &task_ref.work_indexes_index, empty_signal: signal});
     self.end_task(task); 
   }
 
-  fn end_task(&self, task: *const TaskObject<()>) {
+  fn end_task(&self, task: *const TaskObject<(), ATOMICS, MIN_CHUNKS>) {
     let task_ref = unsafe { &*task };
     // Check whether there is no pending work (that is claimed, but not finished yet).
     let remaining = task_ref.active_threads.fetch_sub(1, Ordering::AcqRel) - 1;
@@ -262,14 +262,14 @@ impl<'a> Workers<'a> {
       // Hence we can take unique ownership of this task now.
       let finish = task_ref.finish;
       // task.finish will drop the object. Hence we shouldn't do that here.
-      (finish)(self, task as *mut TaskObject<()>);
+      (finish)(self, task as *mut TaskObject<(), ATOMICS, MIN_CHUNKS>);
     }
   }
 }
 
-pub struct EmptySignal<'a> {
-  pointer: &'a AtomicTaggedPtr<TaskObject<()>>,
-  task: &'a TaskObject<()>,
+pub struct EmptySignal<'a, const ATOMICS: usize, const MIN_CHUNKS: usize> {
+  pointer: &'a AtomicTaggedPtr<TaskObject<(), ATOMICS, MIN_CHUNKS>>,
+  task: &'a TaskObject<(), ATOMICS, MIN_CHUNKS>,
   state: EmptySignalState
 }
 
@@ -279,7 +279,7 @@ enum EmptySignalState {
   DidSignal
 }
 
-impl<'a> EmptySignal<'a> {
+impl<'a, const ATOMICS: usize, const MIN_CHUNKS: usize> EmptySignal<'a, ATOMICS, MIN_CHUNKS> {
   pub fn task_empty(&mut self) {
     match self.state {
       EmptySignalState::DidSignal => {},

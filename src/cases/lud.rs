@@ -34,7 +34,7 @@ pub fn run(openmp_enabled: bool) {
   fn test_schedulers<S>()
     where S: Scheduler
    {
-    test(S::get_name(), |matrix| {
+    test(&S::get_name(), |matrix| {
       let pending = AtomicU64::new(0);
       let mut matrices = vec![(matrix, AtomicU64::new(0), AtomicU64::new(0))];
       S::Workers::run(2, our::create_task::<S, S::Task>(&matrices, &pending));
@@ -99,7 +99,7 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
   ) -> Benchmarker<()> 
   where S: Scheduler
   {
-    return benchmark.parallel(S::get_name(), S::get_chart_line_style(), |thread_count| {
+    return benchmark.parallel(&S::get_name(), S::get_chart_line_style(), |thread_count| {
       for i in 0 .. matrix_count {
         input.copy_to(&mut matrices[i].0);
       }

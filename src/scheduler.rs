@@ -3,7 +3,7 @@ use crate::utils::benchmark::ChartLineStyle;
 pub trait Scheduler {
   type Workers<'a>: Workers<'a, Task = Self::Task> where Self: Sized;
   type Task: Task where Self: Sized;
-  fn get_name() -> &'static str;
+  fn get_name() -> String;
   fn get_chart_line_style() -> ChartLineStyle;
 }
 

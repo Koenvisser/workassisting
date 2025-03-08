@@ -2,34 +2,34 @@ use core::fmt::Debug;
 use core::sync::atomic::{ AtomicI32, AtomicU32, Ordering };
 use core::mem::forget;
 use core::ops::{Drop, Deref, DerefMut};
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::sync::RwLock;
+
 use super::worker::*;
 use crate::scheduler::Task as TaskTrait;
 use crate::scheduler::TaskObject as TaskObjectTrait;
 use crate::scheduler::LoopArguments as LoopArgumentsTrait;
 
-pub const ATOMICS_SIZE: usize = 64;
-pub struct Task (*mut TaskObject<()>);
+pub struct Task<const ATOMICS: usize, const MIN_CHUNKS: usize> (*mut TaskObject<(), ATOMICS, MIN_CHUNKS>);
 
-impl TaskTrait for Task {
-  type Workers<'b> = Workers<'b>;
-  type TaskObject<T: Send + Sync> = TaskObject<T>;
-  type LoopArguments<'c> = LoopArguments<'c>;
+impl<const ATOMICS: usize, const MIN_CHUNKS: usize> TaskTrait for Task<ATOMICS, MIN_CHUNKS> {
+  type Workers<'b> = Workers<'b, ATOMICS, MIN_CHUNKS>;
+  type TaskObject<T: Send + Sync> = TaskObject<T, ATOMICS, MIN_CHUNKS>;
+  type LoopArguments<'c> = LoopArguments<'c, ATOMICS, MIN_CHUNKS>;
 
   fn new_dataparallel<T: Send + Sync>(
     work: for <'a, 'b, 'c> fn(workers: &'a Self::Workers<'b>, data: *const Self::TaskObject<T>, loop_arguments: Self::LoopArguments<'c>) -> (),
     finish: for <'a, 'b> fn(workers: &'a Self::Workers<'b>, data: *mut Self::TaskObject<T>) -> (),
     data: T,
     work_size: u32
-  ) -> Task {
+  ) -> Task<ATOMICS, MIN_CHUNKS> {
     Task::new_dataparallel(work, finish, data, work_size)
   }
 
   fn new_single<T: Send + Sync>(
     function: for <'a, 'b> fn(workers: &'a Self::Workers<'b>, data: *mut Self::TaskObject<T>) -> (),
     data: T
-  ) -> Task {
+  ) -> Task<ATOMICS, MIN_CHUNKS> {
     Task::new_single(function, data)
   }
   
@@ -65,11 +65,11 @@ impl TaskTrait for Task {
 }
 
 #[repr(C)]
-pub struct TaskObject<T> {
+pub struct TaskObject<T, const ATOMICS: usize, const MIN_CHUNKS: usize> {
   // 'work' borrows the TaskObject
-  pub(super) work: Option<fn(workers: &Workers, this: *const TaskObject<T>, loop_arguments: LoopArguments) -> ()>,
+  pub(super) work: Option<fn(workers: &Workers<ATOMICS, MIN_CHUNKS>, this: *const TaskObject<T, ATOMICS, MIN_CHUNKS>, loop_arguments: LoopArguments<ATOMICS, MIN_CHUNKS>) -> ()>,
   // 'finish' takes ownership of the TaskObject
-  pub(super) finish: fn(workers: &Workers, this: *mut TaskObject<T>) -> (),
+  pub(super) finish: fn(workers: &Workers<ATOMICS, MIN_CHUNKS>, this: *mut TaskObject<T, ATOMICS, MIN_CHUNKS>) -> (),
   // The number of active_threads, offset by the tag in the activities array.
   // If this task is present in activities, then:
   //   - active_threads contains - (the number of finished threads), thus non-positive.
@@ -87,24 +87,24 @@ pub struct TaskObject<T> {
   pub data: T,
 }
 
-impl<T: Send + Sync> TaskObjectTrait<T> for TaskObject<T> {
-  unsafe fn get_data<'a>(task: *const TaskObject<T>) -> &'a T {
+impl<T: Send + Sync, const ATOMICS: usize, const MIN_CHUNKS: usize> TaskObjectTrait<T> for TaskObject<T, ATOMICS, MIN_CHUNKS> {
+  unsafe fn get_data<'a>(task: *const TaskObject<T, ATOMICS, MIN_CHUNKS>) -> &'a T {
     TaskObject::get_data(task)
   }
 
-  unsafe fn take_data<'a>(task: *mut TaskObject<T>) -> T {
+  unsafe fn take_data<'a>(task: *mut TaskObject<T, ATOMICS, MIN_CHUNKS>) -> T {
     TaskObject::take_data(task)
   }
 }
 
-impl Debug for Task {
+impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Debug for Task<ATOMICS, MIN_CHUNKS> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
     let obj = unsafe { &*self.0 };
     obj.fmt(f)
   }
 }
 
-impl<T> Debug for TaskObject<T> {
+impl<T, const ATOMICS: usize, const MIN_CHUNKS: usize> Debug for TaskObject<T, ATOMICS, MIN_CHUNKS> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
     let work = self.work.map(|f| f as *const ());
     write!(f, "Task:\n  work {:?}\n  finish {:?}\n size {:?}\n index {:?}\n active threads {:?}", work, self.finish as *const (), self.work_size, self.work_indexes, self.active_threads)
@@ -123,14 +123,14 @@ fn distribute(x: u32, n: usize) -> Vec<u32> {
   result
 }
 
-impl Task {
+impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Task<ATOMICS, MIN_CHUNKS> {
   pub fn new_dataparallel<T: Send + Sync>(
-    work: fn(workers: &Workers, data: *const TaskObject<T>, loop_arguments: LoopArguments) -> (),
-    finish: fn(workers: &Workers, data: *mut TaskObject<T>) -> (),
+    work: fn(workers: &Workers<ATOMICS, MIN_CHUNKS>, data: *const TaskObject<T, ATOMICS, MIN_CHUNKS>, loop_arguments: LoopArguments<ATOMICS, MIN_CHUNKS>) -> (),
+    finish: fn(workers: &Workers<ATOMICS, MIN_CHUNKS>, data: *mut TaskObject<T, ATOMICS, MIN_CHUNKS>) -> (),
     data: T,
     work_size: u32
-  ) -> Task {
-    let atomics = min(ATOMICS_SIZE, work_size as usize);
+  ) -> Task<ATOMICS, MIN_CHUNKS> {
+    let atomics = max(1, min(ATOMICS, (work_size / MIN_CHUNKS as u32) as usize));
     let mut work_size = distribute(work_size, atomics);
 
     let mut index = 0;
@@ -141,7 +141,7 @@ impl Task {
       result
     }).collect();
 
-    let task_box: Box<TaskObject<T>> = Box::new(TaskObject{
+    let task_box: Box<TaskObject<T, ATOMICS, MIN_CHUNKS>> = Box::new(TaskObject{
       work: Some(work),
       finish,
       work_size,
@@ -150,14 +150,14 @@ impl Task {
       work_indexes_index: AtomicU32::new(0),
       data
     });
-    Task(Box::into_raw(task_box) as *mut TaskObject<()>)
+    Task(Box::into_raw(task_box) as *mut TaskObject<(), ATOMICS, MIN_CHUNKS>)
   }
 
   pub fn new_single<T: Send + Sync>(
-    function: fn(workers: &Workers, data: *mut TaskObject<T>) -> (),
+    function: fn(workers: &Workers<ATOMICS, MIN_CHUNKS>, data: *mut TaskObject<T, ATOMICS, MIN_CHUNKS>) -> (),
     data: T
-  ) -> Task {
-    let task_box: Box<TaskObject<T>> = Box::new(TaskObject{
+  ) -> Task<ATOMICS, MIN_CHUNKS> {
+    let task_box: Box<TaskObject<T, ATOMICS, MIN_CHUNKS>> = Box::new(TaskObject{
       work: None,
       finish: function,
       work_size: vec![],
@@ -166,22 +166,22 @@ impl Task {
       work_indexes_index: AtomicU32::new(0),
       data
     });
-    Task(Box::into_raw(task_box) as *mut TaskObject<()>)
+    Task(Box::into_raw(task_box) as *mut TaskObject<(), ATOMICS, MIN_CHUNKS>)
   }
 
   // The caller should assure that the object is properly deallocated.
   // This can be done by calling Task::from_raw.
-  pub fn into_raw(self) -> *mut TaskObject<()> {
+  pub fn into_raw(self) -> *mut TaskObject<(), ATOMICS, MIN_CHUNKS> {
     let ptr = self.0;
     forget(self); // Don't run drop() on self, as that would deallocate the TaskObject
     ptr
   }
 }
 
-unsafe impl Send for Task {}
-unsafe impl Sync for Task {}
+unsafe impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Send for Task<ATOMICS, MIN_CHUNKS> {}
+unsafe impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Sync for Task<ATOMICS, MIN_CHUNKS> {}
 
-impl Drop for Task {
+impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Drop for Task<ATOMICS, MIN_CHUNKS> {
   fn drop(&mut self) {
     // We cannot drop the TaskObject<T> here, as we don't know the type argument T here.
     // We assume that the TaskObject is passed to Workers; that will handle the deallocation of the TaskObject.
@@ -189,42 +189,42 @@ impl Drop for Task {
   }
 }
 
-impl Deref for Task {
-  type Target = TaskObject<()>;
+impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Deref for Task<ATOMICS, MIN_CHUNKS> {
+  type Target = TaskObject<(), ATOMICS, MIN_CHUNKS>;
 
   fn deref(&self) -> &Self::Target {
     unsafe { &*self.0 }
   }
 }
 
-impl DerefMut for Task {
+impl<const ATOMICS: usize, const MIN_CHUNKS: usize> DerefMut for Task<ATOMICS, MIN_CHUNKS> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     unsafe { &mut *self.0 }
   }
 }
 
-impl<T> TaskObject<T> {
+impl<T, const ATOMICS: usize, const MIN_CHUNKS: usize> TaskObject<T, ATOMICS, MIN_CHUNKS> {
   // Safety: caller should guarantee that the TaskObject outlives lifetime 'a.
-  pub unsafe fn get_data<'a>(task: *const TaskObject<T>) -> &'a T {
+  pub unsafe fn get_data<'a>(task: *const TaskObject<T, ATOMICS, MIN_CHUNKS>) -> &'a T {
     unsafe { &(*task).data }
   }
 
-  pub unsafe fn take_data<'a>(task: *mut TaskObject<T>) -> T {
+  pub unsafe fn take_data<'a>(task: *mut TaskObject<T, ATOMICS, MIN_CHUNKS>) -> T {
     unsafe { Box::from_raw(task) }.data
   }
 }
 
-pub struct LoopArguments<'a> {
+pub struct LoopArguments<'a, const ATOMICS: usize, const MIN_CHUNKS: usize> {
   pub work_size: &'a Vec<u32>,
   pub work_indexes: &'a RwLock<Vec<AtomicU32>>,
   pub work_indexes_index: &'a AtomicU32,
-  pub empty_signal: EmptySignal<'a>,
+  pub empty_signal: EmptySignal<'a, ATOMICS, MIN_CHUNKS>,
 }
 
-impl Debug for LoopArguments<'_> {
+impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Debug for LoopArguments<'_, ATOMICS, MIN_CHUNKS> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
     write!(f, "LoopArguments:\n  work_size {:?}\n  work_indexes {:?}", self.work_size, self.work_indexes)
   }
 }
 
-impl<'a> LoopArgumentsTrait<'a> for LoopArguments<'a> {}
+impl<'a, const ATOMICS: usize, const MIN_CHUNKS: usize> LoopArgumentsTrait<'a> for LoopArguments<'a, ATOMICS, MIN_CHUNKS> {}

@@ -45,8 +45,8 @@ impl SchedulerTrait for Scheduler {
   type Workers<'a> = Workers<'a>;
   type Task = Task;
 
-  fn get_name() -> &'static str {
-    "Work assisting"
+  fn get_name() -> String {
+    "Work assisting".to_string()
   }
 
   fn get_chart_line_style() -> ChartLineStyle {
