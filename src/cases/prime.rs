@@ -1,7 +1,8 @@
 use core::sync::atomic::{Ordering, AtomicU32};
 use rayon::prelude::*;
-use crate::core::worker::*;
-use crate::utils::benchmark::{benchmark, ChartStyle, Nesting, ChartLineStyle};
+use crate::scheduler::{Scheduler, Workers};
+use crate::for_each_scheduler_with_arg;
+use crate::utils::benchmark::{benchmark, ChartStyle, Nesting, ChartLineStyle, Benchmarker};
 use crate::utils::thread_pinning::AFFINITY_MAPPING;
 use num_format::{Locale, ToFormattedString};
 
@@ -18,7 +19,7 @@ pub fn run(open_mp_enabled: bool) {
 
 fn run_on(open_mp_enabled: bool, style: ChartStyle, start: u64, count: u64) {
   let name = "Primes (".to_owned() + &start.to_formatted_string(&Locale::en) + " .. " + &(start + count).to_formatted_string(&Locale::en) + ")";
-  benchmark(
+  let mut benchmark = benchmark(
     style,
     16,
     &name,
@@ -29,13 +30,23 @@ fn run_on(open_mp_enabled: bool, style: ChartStyle, start: u64, count: u64) {
   .work_stealing(|thread_count| deque::count_primes(start, count, thread_count))
   .open_mp(open_mp_enabled, "OpenMP (static)", ChartLineStyle::OmpStatic, "prime-static", Nesting::Flat, start as usize, Some((start + count) as usize))
   .open_mp(open_mp_enabled, "OpenMP (dynamic)", ChartLineStyle::OmpDynamic, "prime-dynamic", Nesting::Flat, start as usize, Some((start + count) as usize))
-  .open_mp(open_mp_enabled, "OpenMP (taskloop)", ChartLineStyle::OmpTask, "prime-taskloop", Nesting::Flat, start as usize, Some((start + count) as usize))
-  .our(|thread_count| {
-    let counter = AtomicU32::new(0);
-    let task = our::create_task(&counter, start, count);
-    Workers::run(thread_count, task);
-    counter.load(Ordering::Acquire)
-  });
+  .open_mp(open_mp_enabled, "OpenMP (taskloop)", ChartLineStyle::OmpTask, "prime-taskloop", Nesting::Flat, start as usize, Some((start + count) as usize));
+  
+  for_each_scheduler_with_arg!(benchmark_our, benchmark, start, count);
+
+  fn benchmark_our<S>(
+    benchmark: Benchmarker<u32>, 
+    start: u64,
+    count: u64
+  ) -> Benchmarker<u32>
+    where S: Scheduler {
+      return benchmark.parallel(&S::get_name(), S::get_chart_line_style(), |thread_count| {
+        let counter = AtomicU32::new(0);
+        let task = our::create_task(&counter, start, count);
+        S::Workers::run(thread_count, task);
+        counter.load(Ordering::Acquire)
+      });
+    }
 }
 
 pub fn reference_sequential_single(start: u64, count: u64) -> u32 {

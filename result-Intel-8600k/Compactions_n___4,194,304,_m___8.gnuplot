@@ -11,4 +11,5 @@ set ylabel "Speedup"
 plot './results/Compactions_n___4,194,304,_m___8.dat' using 1:2 title "Outer parallelism" pointsize 0.7 lw 1 pt 1 linecolor rgb "#24A793" with linespoints, \
   './results/Compactions_n___4,194,304,_m___8.dat' using 1:3 title "Inner parallelism" pointsize 0.7 lw 1 pt 2 linecolor rgb "#5287C6" with linespoints, \
   './results/Compactions_n___4,194,304,_m___8.dat' using 1:4 title "OpenMP" pointsize 0.7 lw 1 pt 4 linecolor rgb "#001240" with linespoints, \
-  './results/Compactions_n___4,194,304,_m___8.dat' using 1:5 title "Work assisting (our)" pointsize 0.4 lw 2 pt 7 linecolor rgb "#C00A35" with linespoints
+  './results/Compactions_n___4,194,304,_m___8.dat' using 1:5 title "Multi-atomics" pointsize 0.7 lw 2 pt 1 linecolor rgb "#A7E310" with linespoints, \
+  './results/Compactions_n___4,194,304,_m___8.dat' using 1:6 title "Work assisting" pointsize 0.4 lw 2 pt 7 linecolor rgb "#C00A35" with linespoints

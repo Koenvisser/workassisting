@@ -13,4 +13,5 @@ plot './results/Sort_n___262,144.dat' using 1:2 title "Sequential partition" poi
   './results/Sort_n___262,144.dat' using 1:3 title "Work stealing" pointsize 0.7 lw 1 pt 6 linecolor rgb "#5B2182" with linespoints, \
   './results/Sort_n___262,144.dat' using 1:4 title "OpenMP (nested loops)" pointsize 0.7 lw 1 pt 4 linecolor rgb "#001240" with linespoints, \
   './results/Sort_n___262,144.dat' using 1:5 title "OpenMP (tasks)" pointsize 0.7 lw 1 pt 12 linecolor rgb "#F3965E" with linespoints, \
-  './results/Sort_n___262,144.dat' using 1:6 title "Work assisting (our)" pointsize 0.4 lw 2 pt 7 linecolor rgb "#C00A35" with linespoints
+  './results/Sort_n___262,144.dat' using 1:6 title "Multi-atomics" pointsize 0.7 lw 2 pt 1 linecolor rgb "#A7E310" with linespoints, \
+  './results/Sort_n___262,144.dat' using 1:7 title "Work assisting" pointsize 0.4 lw 2 pt 7 linecolor rgb "#C00A35" with linespoints

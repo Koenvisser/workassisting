@@ -1,12 +1,16 @@
 use core::panic;
 use core::sync::atomic::AtomicU64;
+use crate::scheduler::{Scheduler, Workers};
 use crate::utils::matrix::SquareMatrix;
-use crate::core::worker::Workers;
+use crate::utils::benchmark::Benchmarker;
+use crate::for_each_scheduler;
+use crate::for_each_scheduler_with_arg;
 use crate::utils::benchmark::{benchmark_with_title, ChartStyle, ChartLineStyle};
 use num_format::{Locale, ToFormattedString};
 
 pub mod our;
 pub mod workstealing;
+
 
 pub fn run(openmp_enabled: bool) {
   test("sequential", |mut matrix| {
@@ -24,13 +28,22 @@ pub fn run(openmp_enabled: bool) {
     let result = matrices.pop().unwrap();
     result.0
   });
-  test("workassisting", |matrix| {
-    let pending = AtomicU64::new(0);
-    let mut matrices = vec![(matrix, AtomicU64::new(0), AtomicU64::new(0))];
-    Workers::run(2, our::create_task(&matrices, &pending));
-    let result = matrices.pop().unwrap();
-    result.0
-  });
+
+  test_schedulers::<crate::schedulers::workassisting::worker::Scheduler>();
+
+  fn test_schedulers<S>()
+    where S: Scheduler
+   {
+    test(&S::get_name(), |matrix| {
+      let pending = AtomicU64::new(0);
+      let mut matrices = vec![(matrix, AtomicU64::new(0), AtomicU64::new(0))];
+      S::Workers::run(2, our::create_task::<S, S::Task>(&matrices, &pending));
+      let result = matrices.pop().unwrap();
+      result.0
+    });
+  }
+
+  for_each_scheduler!(test_schedulers);
 
   run_on(openmp_enabled, 256, 1);
   run_on(openmp_enabled, 256, 2);
@@ -53,7 +66,7 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
 
   let name = "LUD (n = ".to_owned() + &size.to_formatted_string(&Locale::en) + ", m = " + &matrix_count.to_formatted_string(&Locale::en) + ")";
   let title = "m = ".to_owned() + &matrix_count.to_formatted_string(&Locale::en);
-  benchmark_with_title(if matrix_count == 1 { ChartStyle::SmallWithKey } else { ChartStyle::Small }, 9, &name, &title, || {
+  let mut benchmark = benchmark_with_title(if matrix_count == 1 { ChartStyle::SmallWithKey } else { ChartStyle::Small }, 9, &name, &title, || {
     for i in 0 .. matrix_count {
       input.copy_to(&mut matrices[i].0);
       sequential_tiled(&mut matrices[i].0);
@@ -72,13 +85,29 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
     workstealing::run(&matrices, &pending, thread_count);
   })
   .open_mp_lud(openmp_enabled, "OpenMP (loops)", false, ChartLineStyle::OmpDynamic, &filename(size), matrix_count)
-  .open_mp_lud(openmp_enabled, "OpenMP (tasks)", true, ChartLineStyle::OmpTask, &filename(size), matrix_count)
-  .our(|thread_count| {
-    for i in 0 .. matrix_count {
-      input.copy_to(&mut matrices[i].0);
-    }
-    Workers::run(thread_count, our::create_task(&matrices, &pending));
-  });
+  .open_mp_lud(openmp_enabled, "OpenMP (tasks)", true, ChartLineStyle::OmpTask, &filename(size), matrix_count);
+  // .our(benchmark_our);
+
+  for_each_scheduler_with_arg!(benchmark_our, benchmark, matrix_count, input.clone(), &mut matrices, &pending);
+  
+  fn benchmark_our<S>(
+    benchmark: Benchmarker<()>, 
+    matrix_count: usize, 
+    input: SquareMatrix,
+    matrices: &mut Vec<(SquareMatrix, AtomicU64, AtomicU64)>,
+    pending: &AtomicU64
+  ) -> Benchmarker<()> 
+  where S: Scheduler
+  {
+    return benchmark.parallel(&S::get_name(), S::get_chart_line_style(), |thread_count| {
+      for i in 0 .. matrix_count {
+        input.copy_to(&mut matrices[i].0);
+      }
+      S::Workers::run(thread_count, our::create_task::<S, S::Task>(&matrices, &pending));
+    });
+  }
+
+  
 }
 
 fn test<F: FnOnce(SquareMatrix) -> SquareMatrix>(name: &str, f: F) {

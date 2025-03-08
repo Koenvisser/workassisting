@@ -1,12 +1,12 @@
 use core::fmt::Debug;
-use core::sync::atomic::{ AtomicI32, AtomicU32 };
+use core::sync::atomic::{ AtomicI32, AtomicU32, Ordering };
 use core::mem::forget;
 use core::ops::{Drop, Deref, DerefMut};
-use std::cmp::min;
-use std::sync::RwLock;
-use crate::core::worker::*;
+use super::worker::*;
+use crate::scheduler::Task as TaskTrait;
+use crate::scheduler::TaskObject as TaskObjectTrait;
+use crate::scheduler::LoopArguments as LoopArgumentsTrait;
 
-pub const ATOMICS_SIZE: usize = 64;
 pub struct Task (*mut TaskObject<()>);
 
 #[repr(C)]
@@ -26,8 +26,8 @@ pub struct TaskObject<T> {
   //   - no thread is still working on this task.
   // Hence we can run the finish function and deallocate the task.
   pub(super) active_threads: AtomicI32,
-  pub(super) work_indexes: RwLock<Vec<AtomicU32>>,
-  pub(super) work_size: Vec<u32>,
+  pub(super) work_index: AtomicU32,
+  pub(super) work_size: u32,
   pub data: T,
 }
 
@@ -41,21 +41,54 @@ impl Debug for Task {
 impl<T> Debug for TaskObject<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
     let work = self.work.map(|f| f as *const ());
-    write!(f, "Task:\n  work {:?}\n  finish {:?}\n size {:?}\n index {:?}\n active threads {:?}", work, self.finish as *const (), self.work_size, self.work_indexes, self.active_threads)
+    write!(f, "Task:\n  work {:?}\n  finish {:?}\n size {:?}\n index {:?}\n active threads {:?}", work, self.finish as *const (), self.work_size, self.work_index, self.active_threads)
   }
 }
 
+impl TaskTrait for Task {
+  type Workers<'a> = Workers<'a>;
+  type LoopArguments<'b> = LoopArguments<'b>;
+  type TaskObject<T: Send + Sync> = TaskObject<T>;
 
-// Distribute x over n elements, such that the sum of the elements is x.
-fn distribute(x: u32, n: usize) -> Vec<u32> {
-  let mut result = vec![x / n as u32; n];
-  let remainder = (x % n as u32) as usize;
-
-  for i in 0..remainder {
-      result[i] += 1;
+  fn new_dataparallel<T: Send + Sync>(
+    work: for <'a, 'b, 'c> fn(workers: &'a Self::Workers<'b>, data: *const Self::TaskObject<T>, loop_arguments: Self::LoopArguments<'c>) -> (),
+    finish: for <'a, 'b> fn(workers: &'a Self::Workers<'b>, data: *mut Self::TaskObject<T>) -> (),
+    data: T,
+    work_size: u32
+  ) -> Task {
+    Task::new_dataparallel(work, finish, data, work_size)
   }
 
-  result
+  fn new_single<T: Send + Sync>(
+    function: for <'a, 'b> fn(workers: &'a Self::Workers<'b>, data: *mut Self::TaskObject<T>) -> (),
+    data: T
+  ) -> Task {
+    Task::new_single(function, data)
+  }
+
+  #[inline(always)]
+  fn work_loop<'a, F: FnMut(u32)>(
+    loop_arguments: Self::LoopArguments<'a>,
+    mut work: F,
+  ) {
+    let mut loop_arguments: LoopArguments = loop_arguments;
+    // Claim work
+    let mut chunk_idx = loop_arguments.first_index;
+
+    while chunk_idx < loop_arguments.work_size {
+      if chunk_idx == loop_arguments.work_size - 1 {
+        // All work is claimed.
+        loop_arguments.empty_signal.task_empty();
+      }
+
+      // Copy chunk_index to an immutable variable, such that a user of this macro cannot mutate it.
+      let chunk_index = chunk_idx;
+      work(chunk_index);
+
+      chunk_idx = loop_arguments.work_index.fetch_add(1, Ordering::Relaxed);
+    }
+    loop_arguments.empty_signal.task_empty();
+  }
 }
 
 impl Task {
@@ -65,24 +98,12 @@ impl Task {
     data: T,
     work_size: u32
   ) -> Task {
-    let atomics = min(ATOMICS_SIZE, work_size as usize);
-    let mut work_size = distribute(work_size, atomics);
-
-    let mut index = 0;
-    let mut work_indexes: Vec<AtomicU32> = (0..atomics).map(|i| {
-      let result = AtomicU32::new(index);
-      index += work_size[i];
-      work_size[i] = index;
-      result
-    }).collect();
-    work_indexes[0] = AtomicU32::new(1);
-
     let task_box: Box<TaskObject<T>> = Box::new(TaskObject{
       work: Some(work),
       finish,
       work_size,
       active_threads: AtomicI32::new(0),
-      work_indexes: RwLock::new(work_indexes),
+      work_index: AtomicU32::new(1),
       data
     });
     Task(Box::into_raw(task_box) as *mut TaskObject<()>)
@@ -95,9 +116,9 @@ impl Task {
     let task_box: Box<TaskObject<T>> = Box::new(TaskObject{
       work: None,
       finish: function,
-      work_size: vec![],
+      work_size: 0,
       active_threads: AtomicI32::new(0),
-      work_indexes: RwLock::new(vec![]),
+      work_index: AtomicU32::new(0),
       data
     });
     Task(Box::into_raw(task_box) as *mut TaskObject<()>)
@@ -148,16 +169,22 @@ impl<T> TaskObject<T> {
   }
 }
 
-pub struct LoopArguments<'a> {
-  pub work_size: &'a Vec<u32>,
-  pub work_indexes: &'a RwLock<Vec<AtomicU32>>,
-  pub empty_signal: EmptySignal<'a>,
-  pub first_index: u32,
-  pub current_index: usize,
-}
 
-impl Debug for LoopArguments<'_> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-    write!(f, "LoopArguments:\n  work_size {:?}\n  work_indexes {:?}\n first_index {:?}\n  current_index {:?}", self.work_size, self.work_indexes, self.first_index, self.current_index)
+impl<T: Send + Sync> TaskObjectTrait<T> for TaskObject<T> {
+  unsafe fn get_data<'a>(task: *const TaskObject<T>) -> &'a T {
+    TaskObject::get_data(task)
+  }
+
+  unsafe fn take_data<'a>(task: *mut TaskObject<T>) -> T {
+    TaskObject::take_data(task)
   }
 }
+
+pub struct LoopArguments<'a> {
+  pub work_size: u32,
+  pub work_index: &'a AtomicU32,
+  pub empty_signal: EmptySignal<'a>,
+  pub first_index: u32,
+}
+
+impl<'a> LoopArgumentsTrait<'a> for LoopArguments<'a> {}

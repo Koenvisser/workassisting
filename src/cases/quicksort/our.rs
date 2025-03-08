@@ -4,11 +4,9 @@
 // - Two sections are sorted in parallel with task parallelism
 
 use core::sync::atomic::{Ordering, AtomicU32, AtomicU64};
+use crate::scheduler::*;
 use crate::cases::quicksort::count_recursive_calls;
 use crate::cases::quicksort::parallel_partition_chunk;
-use crate::core::worker::*;
-use crate::core::workassisting_loop::*;
-use crate::core::task::*;
 
 use crate::cases::quicksort::{SEQUENTIAL_CUTOFF, DATAPAR_CUTOFF, BLOCK_SIZE};
 use crate::cases::quicksort::sequential;
@@ -24,7 +22,7 @@ struct Data<'a> {
   counters: AtomicU64, //crossbeam::utils::CachePadded<AtomicU64>
 }
 
-pub fn create_task<'a>(pending_tasks: &'a AtomicU64, input: &'a [AtomicU32], output: &'a [AtomicU32], input_output_flipped: bool) -> Option<Task> {
+pub fn create_task<'a, T:Task>(pending_tasks: &'a AtomicU64, input: &'a [AtomicU32], output: &'a [AtomicU32], input_output_flipped: bool) -> Option<T> {
   assert_eq!(input.len(), output.len());
 
   if input.len() == 0 {
@@ -46,14 +44,14 @@ pub fn create_task<'a>(pending_tasks: &'a AtomicU64, input: &'a [AtomicU32], out
         pending_tasks,
         array: input
       };
-      return Some(Task::new_single(task_parallel::run, data));
+      return Some(T::new_single(task_parallel::run, data));
     } else {
       let data = task_parallel::SortWithCopy{
         pending_tasks,
         input,
         output
       };
-      return Some(Task::new_single(task_parallel::run_with_copy, data));
+      return Some(T::new_single(task_parallel::run_with_copy, data));
     }
   }
 
@@ -65,24 +63,24 @@ pub fn create_task<'a>(pending_tasks: &'a AtomicU64, input: &'a [AtomicU32], out
     counters: AtomicU64::new(0)
   };
 
-  Some(Task::new_dataparallel(partition_run, partition_finish, data, ((input.len() - 1 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32))
+  Some(T::new_dataparallel(partition_run, partition_finish, data, ((input.len() - 1 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32))
 }
 
-fn partition_run(_workers: &Workers, task: *const TaskObject<Data>, loop_arguments: LoopArguments) {
-  let data = unsafe { TaskObject::get_data(task) };
+fn partition_run<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
+  let data = unsafe { T::TaskObject::get_data(task) };
 
   let pivot = data.input[0].load(Ordering::Relaxed);
 
   let input = data.input;
   let output = data.output;
   let counters = &data.counters;
-  workassisting_loop!(loop_arguments, |chunk_index| {
+  T::work_loop(loop_arguments, |chunk_index| {
     parallel_partition_chunk(input, output, pivot, counters, chunk_index as usize);
   });
 }
 
-fn partition_finish(workers: &Workers, task: *mut TaskObject<Data>) {
-  let data = unsafe { TaskObject::take_data(task) };
+fn partition_finish<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Data>) {
+  let data = unsafe { T::TaskObject::take_data(task) };
 
   let counters = data.counters.load(Ordering::Relaxed);
   let count_left = counters & 0xFFFFFFFF;

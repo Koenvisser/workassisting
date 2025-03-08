@@ -1,8 +1,11 @@
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use num_format::{Locale, ToFormattedString};
+use our::BlockInfo;
 
-use crate::core::worker::Workers;
-use crate::utils::benchmark::{benchmark_with_title, ChartLineStyle, ChartStyle, Nesting};
+use crate::scheduler::*;
+use crate::schedulers::workassisting::worker::Workers as WorkAssisting;
+use crate::for_each_scheduler_with_arg;
+use crate::utils::benchmark::{benchmark_with_title, ChartLineStyle, ChartStyle, Nesting, Benchmarker};
 use crate::utils;
 
 mod our;
@@ -37,23 +40,37 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
 
   let name = "Scans (n = ".to_owned() + &size.to_formatted_string(&Locale::en) + ", m = " + &array_count.to_formatted_string(&Locale::en) + ")";
   let title = "m = ".to_owned() + &array_count.to_formatted_string(&Locale::en);
-  benchmark_with_title(if array_count == 1 { ChartStyle::SmallWithKey } else { ChartStyle::Small }, 5, &name, &title, || {
+  let mut benchmark = benchmark_with_title(if array_count == 1 { ChartStyle::SmallWithKey } else { ChartStyle::Small }, 5, &name, &title, || {
     reference_sequential(&inputs, &outputs);
   })
   .parallel("Outer parallelism", ChartLineStyle::SequentialPartition, |thread_count| {
     let task = outer::create_task(&inputs, &outputs);
-    Workers::run(thread_count, task);
+    WorkAssisting::run(thread_count, task);
   })
   .parallel("Inner parallelism", ChartLineStyle::Static, |thread_count| {
     let task = inner::create_task(&inputs, &temps, &outputs);
-    Workers::run(thread_count, task);
+    WorkAssisting::run(thread_count, task);
   })
-  .open_mp(open_mp_enabled, "OpenMP", ChartLineStyle::OmpDynamic, "scan", Nesting::Nested, array_count, Some(size))
-  .our(|thread_count| {
-    let pending = AtomicUsize::new(array_count + 1);
-    let task = our::create_initial_task(&inputs, &temps, &outputs, &pending);
-    Workers::run(thread_count, task);
-  });
+  .open_mp(open_mp_enabled, "OpenMP", ChartLineStyle::OmpDynamic, "scan", Nesting::Nested, array_count, Some(size));
+
+  for_each_scheduler_with_arg!(benchmark_our, benchmark, &inputs, &temps, &outputs, array_count);
+  
+  fn benchmark_our<S>(
+    benchmark: Benchmarker<()>,
+    inputs: &Vec<Box<[u64]>>,
+    temps: &Vec<Box<[BlockInfo]>>,
+    outputs: &Vec<Box<[AtomicU64]>>,
+    array_count: usize
+  ) -> Benchmarker<()>
+  where
+    S: Scheduler
+  {
+    return benchmark.parallel(&S::get_name(), S::get_chart_line_style(), |thread_count| {
+      let pending = AtomicUsize::new(array_count + 1);
+      let task = our::create_initial_task(inputs, temps, outputs, &pending);
+      S::Workers::run(thread_count, task);
+    })
+  }
 }
 
 pub fn reference_sequential(inputs: &[Box<[u64]>], outputs: &[Box<[AtomicU64]>]) -> () {

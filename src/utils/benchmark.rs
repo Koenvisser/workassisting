@@ -35,29 +35,35 @@ pub enum ChartLineStyle {
   Static,
   StaticPinned,
   Rayon,
-  SequentialPartition
+  SequentialPartition,
+  Dynamic(usize, usize),
 }
 
-fn chart_line_style_to_str(style: ChartLineStyle) -> &'static str {
+fn chart_line_style_to_str(style: ChartLineStyle) -> String {
   match style {
     ChartLineStyle::WorkAssisting
-      => "pointsize 0.4 lw 2 pt 7 linecolor rgb \"#C00A35\"",
+      => "pointsize 0.4 lw 2 pt 7 linecolor rgb \"#C00A35\"".to_string(),
     ChartLineStyle::WorkStealing
-      => "pointsize 0.7 lw 1 pt 6 linecolor rgb \"#5B2182\"",
+      => "pointsize 0.7 lw 1 pt 6 linecolor rgb \"#5B2182\"".to_string(),
     ChartLineStyle::OmpStatic
-      => "pointsize 0.7 lw 1 pt 5 linecolor rgb \"#FFCD00\"",
+      => "pointsize 0.7 lw 1 pt 5 linecolor rgb \"#FFCD00\"".to_string(),
     ChartLineStyle::OmpDynamic
-      => "pointsize 0.7 lw 1 pt 4 linecolor rgb \"#001240\"",
+      => "pointsize 0.7 lw 1 pt 4 linecolor rgb \"#001240\"".to_string(),
     ChartLineStyle::OmpTask
-      => "pointsize 0.7 lw 1 pt 12 linecolor rgb \"#F3965E\"",
+      => "pointsize 0.7 lw 1 pt 12 linecolor rgb \"#F3965E\"".to_string(),
     ChartLineStyle::Static
-      => "pointsize 0.7 lw 1 pt 2 linecolor rgb \"#5287C6\"",
+      => "pointsize 0.7 lw 1 pt 2 linecolor rgb \"#5287C6\"".to_string(),
     ChartLineStyle::StaticPinned
-      => "pointsize 0.7 lw 1 pt 3 linecolor rgb \"#24A793\"",
+      => "pointsize 0.7 lw 1 pt 3 linecolor rgb \"#24A793\"".to_string(),
     ChartLineStyle::Rayon
-      => "pointsize 0.7 lw 1 pt 1 linecolor rgb \"#6E3B23\"",
+      => "pointsize 0.7 lw 1 pt 1 linecolor rgb \"#6E3B23\"".to_string(),
     ChartLineStyle::SequentialPartition
-      => "pointsize 0.7 lw 1 pt 1 linecolor rgb \"#24A793\"",
+      => "pointsize 0.7 lw 1 pt 1 linecolor rgb \"#24A793\"".to_string(),
+    ChartLineStyle::Dynamic(ref atomics, ref min_chunks)
+      => {
+        let color = format!("#{:02X}{:02X}{:02X}", atomics * 10 % 256, min_chunks * 20 % 256, (atomics + min_chunks) * 15 % 256);
+        format!("pointsize 0.7 lw 2 pt 1 linecolor rgb \"{}\"", color)
+      },
   }
 }
 
@@ -99,10 +105,6 @@ impl<T: Copy + Debug + Eq + Send> Benchmarker<T> {
 
   pub fn work_stealing<Par: FnMut(usize) -> T>(self, parallel: Par) -> Self {
     self.parallel("Work stealing", ChartLineStyle::WorkStealing, parallel)
-  }
-
-  pub fn our<Par: FnMut(usize) -> T>(self, parallel: Par) -> Self {
-    self.parallel("Work assisting (our)", ChartLineStyle::WorkAssisting, parallel)
   }
 
   pub fn sequential<Seq: FnMut() -> T>(self, name: &str, sequential: Seq) -> Self {
