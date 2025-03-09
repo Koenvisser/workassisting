@@ -11,19 +11,27 @@ struct InitialData<'a> {
   pending: &'a AtomicUsize
 }
 
-pub fn create_initial_task<T:Task>(inputs: &[Box<[u64]>], temps: &[Box<[BlockInfo]>], outputs: &[Box<[AtomicU64]>], pending: &AtomicUsize) -> T {
+pub fn create_initial_task<S, T>(inputs: &[Box<[u64]>], temps: &[Box<[BlockInfo]>], outputs: &[Box<[AtomicU64]>], pending: &AtomicUsize) -> T 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
   if inputs.len() == 1 {
     pending.store(1, Ordering::Relaxed);
-    create_task(&inputs[0], &temps[0], &outputs[0], pending)
+    create_task::<S, T>(&inputs[0], &temps[0], &outputs[0], pending)
   } else {
-    T::new_dataparallel::<InitialData>(initial_run, initial_finish, InitialData{ inputs, temps, outputs, pending }, inputs.len() as u32)
+    T::new_dataparallel::<InitialData>(initial_run::<S, T>, initial_finish, InitialData{ inputs, temps, outputs, pending }, inputs.len() as u32)
   }
 }
 
-fn initial_run<'a, 'b, 'c, T:Task>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<InitialData>, loop_arguments: T::LoopArguments<'c>) {
+fn initial_run<'a, 'b, 'c, S, T>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<InitialData>, loop_arguments: T::LoopArguments<'c>) 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
   let data = unsafe { T::TaskObject::get_data(task) };
   T::work_loop(loop_arguments, |i| {
-    workers.push_task(create_task(&data.inputs[i as usize], &data.temps[i as usize], &data.outputs[i as usize], data.pending));
+    workers.push_task(create_task::<S, T>(&data.inputs[i as usize], &data.temps[i as usize], &data.outputs[i as usize], data.pending));
   });
 }
 fn initial_finish<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<InitialData>) {
@@ -57,6 +65,13 @@ pub fn create_temp(size: usize) -> Box<[BlockInfo]> {
   }).collect()
 }
 
+pub fn create_temp_scheduler<S: Scheduler>(size: usize) -> Box<[BlockInfo]> {
+  let block_size = const { BLOCK_SIZE / S::CHUNK_SIZE as u64 };
+  (0 .. (size as u64 + block_size - 1) / block_size).map(|_| BlockInfo{
+    state: AtomicU64::new(STATE_INITIALIZED), aggregate: AtomicU64::new(0), prefix: AtomicU64::new(0)
+  }).collect()
+}
+
 pub fn reset(temp: &[BlockInfo]) {
   for i in 0 .. temp.len() {
     temp[i].state.store(STATE_INITIALIZED, Ordering::Relaxed);
@@ -65,19 +80,28 @@ pub fn reset(temp: &[BlockInfo]) {
   }
 }
 
-pub fn create_task<T:Task>(input: &[u64], temp: &[BlockInfo], output: &[AtomicU64], pending: &AtomicUsize) -> T {
+pub fn create_task<S, T>(input: &[u64], temp: &[BlockInfo], output: &[AtomicU64], pending: &AtomicUsize) -> T 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
   reset(temp);
-  T::new_dataparallel::<Data>(run, finish, Data{ input, temp, output, pending }, ((input.len() as u64 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
+  T::new_dataparallel::<Data>(run::<S, T>, finish, Data{ input, temp, output, pending }, ((input.len() as u64 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
 }
 
-fn run<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
+fn run<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
   let data = unsafe { T::TaskObject::get_data(task) };
   let mut sequential = true;
+  let block_size = const { BLOCK_SIZE / S::CHUNK_SIZE as u64 };
   T::work_loop(loop_arguments, |block_index| {
     // Local scan
     // reduce-then-scan
-    let start = block_index as usize * BLOCK_SIZE as usize;
-    let end = ((block_index as usize + 1) * BLOCK_SIZE as usize).min(data.input.len());
+    let start = block_index as usize * block_size as usize;
+    let end = ((block_index as usize + 1) * block_size as usize).min(data.input.len());
 
     // Check if we already have an aggregate of the previous block.
     // If that is the case, then we can perform the scan directly.

@@ -8,19 +8,29 @@ struct Data<'a> {
   array: &'a [u64]
 }
 
-pub fn create_task<T:Task>(counter: &AtomicU64, array: &[u64]) -> T {
-  T::new_dataparallel::<Data>(work, finish, Data{ counter, array }, ((array.len() + sum_array::BLOCK_SIZE - 1) / sum_array::BLOCK_SIZE) as u32)
+pub fn create_task<S, T>(counter: &AtomicU64, array: &[u64]) -> T 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
+  let block_size = const { sum_array::BLOCK_SIZE / S::CHUNK_SIZE };
+  T::new_dataparallel::<Data>(work::<S, T>, finish, Data{ counter, array }, ((array.len() + block_size - 1) / block_size) as u32)
 }
 
-fn work<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
+fn work<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
   let data = unsafe { T::TaskObject::get_data(task) };
 
   let mut local_count = 0;
+  let block_size = const { sum_array::BLOCK_SIZE / S::CHUNK_SIZE };
 
   let counter = data.counter;
   T::work_loop(loop_arguments, |chunk_index| {
-    let from = chunk_index as usize * sum_array::BLOCK_SIZE;
-    let to = from + sum_array::BLOCK_SIZE;
+    let from = chunk_index as usize * block_size;
+    let to = from + block_size;
 
     let mut local_local_count = 0;
     loop_fixed_size!(number in from, to, data.array.len(), {

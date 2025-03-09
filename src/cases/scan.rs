@@ -53,21 +53,25 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
   })
   .open_mp(open_mp_enabled, "OpenMP", ChartLineStyle::OmpDynamic, "scan", Nesting::Nested, array_count, Some(size));
 
-  for_each_scheduler_with_arg!(benchmark_our, benchmark, &inputs, &temps, &outputs, array_count);
+  for_each_scheduler_with_arg!(benchmark_our, benchmark, &inputs, &outputs, array_count, size);
   
   fn benchmark_our<S>(
     benchmark: Benchmarker<()>,
     inputs: &Vec<Box<[u64]>>,
-    temps: &Vec<Box<[BlockInfo]>>,
     outputs: &Vec<Box<[AtomicU64]>>,
-    array_count: usize
+    array_count: usize,
+    size: usize
   ) -> Benchmarker<()>
   where
     S: Scheduler
   {
+    let mut temps = vec![];
+    for _ in 0 .. array_count {
+      temps.push(our::create_temp_scheduler::<S>(size));
+    }
     return benchmark.parallel(&S::get_name(), S::get_chart_line_style(), |thread_count| {
       let pending = AtomicUsize::new(array_count + 1);
-      let task = our::create_initial_task(inputs, temps, outputs, &pending);
+      let task = our::create_initial_task::<S, S::Task>(inputs, &temps, outputs, &pending);
       S::Workers::run(thread_count, task);
     })
   }
