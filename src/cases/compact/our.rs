@@ -104,8 +104,8 @@ fn run<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *const T::TaskObjec
   T::work_loop(loop_arguments, |block_index| {
     // Local scan
     // reduce-then-scan
-    let start = block_index as usize * BLOCK_SIZE as usize;
-    let end = ((block_index as usize + 1) * BLOCK_SIZE as usize).min(data.input.len());
+    let start = block_index as usize * block_size as usize;
+    let end = ((block_index as usize + 1) * block_size as usize).min(data.input.len());
 
     // Check if we already have an aggregate of the previous block.
     // If that is the case, then we can perform the scan directly.
