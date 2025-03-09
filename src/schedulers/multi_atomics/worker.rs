@@ -47,11 +47,11 @@ impl<const ATOMICS: usize, const MIN_CHUNKS: usize, const CHUNK_SIZE: usize> Sch
   const CHUNK_SIZE: usize = CHUNK_SIZE;
 
   fn get_name() -> String {
-    format!("Multi-atomics {} {}", ATOMICS, MIN_CHUNKS)
+    format!("Multi-atomics {} {} {}", ATOMICS, MIN_CHUNKS, CHUNK_SIZE)
   }
 
   fn get_chart_line_style() -> ChartLineStyle {
-    ChartLineStyle::Dynamic(ATOMICS, MIN_CHUNKS)
+    ChartLineStyle::Dynamic(ATOMICS, MIN_CHUNKS, CHUNK_SIZE)
   }
 }
 

@@ -38,7 +38,7 @@ pub fn create_task<S, T>(matrices: &[(SquareMatrix, AtomicU64, AtomicU64)], pend
     T: Task
 { 
   pending.store(matrices.len() as u64, Ordering::Relaxed);
-  T::new_dataparallel::<Init>(task_init_go::<T>, task_init_finish::<T>, Init{ matrices, pending }, matrices.len() as u32)
+  T::new_dataparallel::<Init>(task_init_go::<S, T>, task_init_finish::<T>, Init{ matrices, pending }, matrices.len() as u32)
 }
 
 struct Init<'a> {
@@ -46,13 +46,17 @@ struct Init<'a> {
   pending: &'a AtomicU64
 }
 
-fn task_init_go<'a, 'b, 'c, T:Task>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<Init>, loop_arguments: T::LoopArguments<'c>) {
+fn task_init_go<'a, 'b, 'c, S, T>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<Init>, loop_arguments: T::LoopArguments<'c>) 
+  where
+    S: Scheduler<Task=T>,
+    T: Task
+{
   let data = unsafe { T::TaskObject::get_data(task) };
 
   T::work_loop(loop_arguments, |index| {
     let (matrix, synchronisation_var, _) = &data.matrices[index as usize];
     diagonal_tile(0, matrix);
-    start_iteration::<T>(workers, 0, matrix, synchronisation_var, data.pending)
+    start_iteration::<S, T>(workers, 0, matrix, synchronisation_var, data.pending)
   });
 }
 
@@ -70,7 +74,11 @@ struct Data<'a> {
   pending: &'a AtomicU64,
 }
 
-fn start_iteration<'a, T:Task>(workers: &T::Workers<'a>, offset: usize, matrix: &SquareMatrix, synchronisation_var: &AtomicU64, pending: &AtomicU64) {
+fn start_iteration<'a, S, T>(workers: &T::Workers<'a>, offset: usize, matrix: &SquareMatrix, synchronisation_var: &AtomicU64, pending: &AtomicU64) 
+  where
+    S: Scheduler<Task=T>,
+    T: Task
+{
   let i_end = offset + OUTER_BLOCK_SIZE;
 
   if offset + OUTER_BLOCK_SIZE >= matrix.size() {
@@ -87,16 +95,16 @@ fn start_iteration<'a, T:Task>(workers: &T::Workers<'a>, offset: usize, matrix: 
 
     workers.push_task(
       T::new_dataparallel::<Data>(
-        task_border_left_go,
-        task_border_finish,
+        task_border_left_go::<S, T>,
+        task_border_finish::<S, T>,
         Data{ matrix, offset, synchronisation_var, pending },
         ((remaining + BORDER_BLOCK_SIZE - 1) / BORDER_BLOCK_SIZE) as u32
       )
     );
     workers.push_task(
       T::new_dataparallel::<Data>(
-        task_border_top_go,
-        task_border_finish,
+        task_border_top_go::<S, T>,
+        task_border_finish::<S, T>,
         Data{ matrix, offset, synchronisation_var, pending },
         ((remaining + BORDER_BLOCK_SIZE - 1) / BORDER_BLOCK_SIZE) as u32
       )
@@ -104,8 +112,12 @@ fn start_iteration<'a, T:Task>(workers: &T::Workers<'a>, offset: usize, matrix: 
   }
 }
 
-fn task_border_left_go<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
-  let data = unsafe { TaskObject::get_data(task) };
+fn task_border_left_go<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) 
+  where
+    S: Scheduler<Task=T>,
+    T: Task
+{
+  let data = unsafe { T::TaskObject::get_data(task) };
 
   let mut temp = Align([0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE]);
   border_init(data.offset, data.matrix, &mut temp);
@@ -115,8 +127,12 @@ fn task_border_left_go<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *
   });
 }
 
-fn task_border_top_go<'a, 'b, T:Task>(_workers: &T::Workers<'a>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'b>) {
-  let data = unsafe { TaskObject::get_data(task) };
+fn task_border_top_go<'a, 'b, S, T>(_workers: &T::Workers<'a>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'b>) 
+  where
+    S: Scheduler<Task=T>,
+    T: Task
+{
+  let data = unsafe { T::TaskObject::get_data(task) };
 
   let mut temp = Align([0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE]);
   border_init(data.offset, data.matrix, &mut temp);
@@ -126,8 +142,12 @@ fn task_border_top_go<'a, 'b, T:Task>(_workers: &T::Workers<'a>, task: *const T:
   });
 }
 
-fn task_border_finish<'a, T:Task>(workers: &T::Workers<'a>, task: *mut T::TaskObject<Data>) {
-  let data = unsafe { TaskObject::take_data(task) };
+fn task_border_finish<'a, S, T>(workers: &T::Workers<'a>, task: *mut T::TaskObject<Data>) 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
+  let data = unsafe { T::TaskObject::take_data(task) };
 
   // The algorithm continues when both the left and the top parts have finished.
   // This function handles the finish phase of both tasks.
@@ -146,7 +166,7 @@ fn task_border_finish<'a, T:Task>(workers: &T::Workers<'a>, task: *mut T::TaskOb
   workers.push_task(
     Task::new_dataparallel::<Data>(
       task_inner_go,
-      task_inner_finish,
+      task_inner_finish::<S, T>,
       Data{ matrix: data.matrix, offset: data.offset, synchronisation_var: data.synchronisation_var, pending: data.pending },
       (rows * columns) as u32
     )
@@ -180,9 +200,13 @@ fn task_inner_go<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const 
   });
 }
 
-fn task_inner_finish<'a, T:Task>(workers: &T::Workers<'a>, task: *mut T::TaskObject<Data>) {
+fn task_inner_finish<'a, S, T>(workers: &T::Workers<'a>, task: *mut T::TaskObject<Data>) 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
   let data = unsafe { TaskObject::take_data(task) };
-  start_iteration::<T>(workers, data.offset + OUTER_BLOCK_SIZE, data.matrix, data.synchronisation_var, data.pending);
+  start_iteration::<S, T>(workers, data.offset + OUTER_BLOCK_SIZE, data.matrix, data.synchronisation_var, data.pending);
 }
 
 // https://stackoverflow.com/questions/53619695/calculating-maximum-value-of-a-set-of-constant-expressions-at-compile-time

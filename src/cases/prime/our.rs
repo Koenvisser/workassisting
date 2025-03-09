@@ -9,20 +9,30 @@ struct Data<'a> {
   length: u64
 }
 
-pub fn create_task<T:Task>(counter: &AtomicU32, first: u64, length: u64) -> T {
-  T::new_dataparallel::<Data>(go, finish, Data{ counter, first, length }, ((length + prime::BLOCK_SIZE - 1) / prime::BLOCK_SIZE) as u32)
+pub fn create_task<S, T>(counter: &AtomicU32, first: u64, length: u64) -> T 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
+  let block_size = const { prime::BLOCK_SIZE / S::CHUNK_SIZE as u64};
+  T::new_dataparallel::<Data>(go::<S, T>, finish, Data{ counter, first, length }, ((length + block_size - 1) / block_size) as u32)
 }
 
-fn go<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
+fn go<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
   let data = unsafe { T::TaskObject::get_data(task) };
 
   let mut local_count = 0;
+  let block_size = const { prime::BLOCK_SIZE / S::CHUNK_SIZE as u64};
 
   T::work_loop(loop_arguments, |chunk_index| {
     let mut local_local_count = 0;
     loop_fixed_size!(number in
-      data.first + chunk_index as u64 * prime::BLOCK_SIZE,
-      data.first + (chunk_index as u64 + 1) * prime::BLOCK_SIZE,
+      data.first + chunk_index as u64 * block_size,
+      data.first + (chunk_index as u64 + 1) * block_size,
       data.first + data.length,
       {
         if prime::is_prime(number) {

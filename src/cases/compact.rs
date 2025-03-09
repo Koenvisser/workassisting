@@ -20,28 +20,28 @@ pub fn find_affinities() -> Box<[usize]> {
   affinity::set_thread_affinity([0]).unwrap();
 
   let inputs = vec![create_input(SIZE)];
-  let temps = vec![our::create_temp(SIZE)];
   let outputs = vec![unsafe { utils::array::alloc_undef_u64_array(SIZE) }];
 
   let ratio = 2;
   let mask = ratio - 1; // Assumes ratio is a power of two
 
   return utils::thread_pinning::find_best_affinity_mapping(cores, |affinities| {
-    for_each_scheduler!(run_our, mask, &inputs, &temps, &outputs, 1, affinities);
+    for_each_scheduler!(run_our, mask, &inputs, &outputs, 1, affinities, SIZE);
   });
 
   fn run_our<S>(
     mask: u64, 
     inputs: &[Box<[u64]>], 
-    temps: &Vec<Box<[BlockInfo]>>,
     outputs: &[Box<[AtomicU64]>],
     array_count: usize,
-    affities: &[usize])
+    affinities: &[usize],
+    size: usize)
       -> () 
     where S: SchedulerTrait {
+      let temps = vec![our::create_temp_scheduler::<S>(size)];
       let pending = AtomicUsize::new(array_count + 1);
-      let task = our::create_initial_task::<S, S::Task>(mask, inputs, temps, outputs, &pending);
-      S::Workers::run_on(affities, task);
+      let task = our::create_initial_task::<S, S::Task>(mask, inputs, &temps, outputs, &pending);
+      S::Workers::run_on(affinities, task);
   }
 
 }
@@ -89,20 +89,24 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
   .open_mp(open_mp_enabled, "OpenMP", ChartLineStyle::OmpDynamic, "compact", Nesting::Nested, array_count, Some(size));
 
 
-  for_each_scheduler_with_arg!(benchmark_our, benchmark, mask, &inputs, &temps, &outputs, array_count);
+  for_each_scheduler_with_arg!(benchmark_our, benchmark, mask, &inputs, &outputs, array_count, size);
 
   fn benchmark_our<S>(
     benchmark: Benchmarker<()>, 
     mask: u64, 
     inputs: &[Box<[u64]>], 
-    temps: &Vec<Box<[BlockInfo]>>,
     outputs: &[Box<[AtomicU64]>],
-    array_count: usize)
+    array_count: usize,
+    size: usize)
       -> Benchmarker<()> 
     where S: SchedulerTrait {
+      let mut temps = vec![];
+      for _ in 0 .. array_count {
+        temps.push(our::create_temp_scheduler::<S>(size));
+      } 
       return benchmark.parallel(&S::get_name(), S::get_chart_line_style(), |thread_count| {
         let pending = AtomicUsize::new(array_count + 1);
-        let task = our::create_initial_task::<S, S::Task>(mask, inputs, temps, outputs, &pending);
+        let task = our::create_initial_task::<S, S::Task>(mask, inputs, &temps, outputs, &pending);
         S::Workers::run(thread_count, task);
       });
   }

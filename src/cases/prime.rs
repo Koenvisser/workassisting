@@ -42,7 +42,7 @@ fn run_on(open_mp_enabled: bool, style: ChartStyle, start: u64, count: u64) {
     where S: Scheduler {
       return benchmark.parallel(&S::get_name(), S::get_chart_line_style(), |thread_count| {
         let counter = AtomicU32::new(0);
-        let task = our::create_task(&counter, start, count);
+        let task = our::create_task::<S, S::Task>(&counter, start, count);
         S::Workers::run(thread_count, task);
         counter.load(Ordering::Acquire)
       });

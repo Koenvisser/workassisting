@@ -36,7 +36,7 @@ pub enum ChartLineStyle {
   StaticPinned,
   Rayon,
   SequentialPartition,
-  Dynamic(usize, usize),
+  Dynamic(usize, usize, usize),
 }
 
 fn chart_line_style_to_str(style: ChartLineStyle) -> String {
@@ -59,9 +59,9 @@ fn chart_line_style_to_str(style: ChartLineStyle) -> String {
       => "pointsize 0.7 lw 1 pt 1 linecolor rgb \"#6E3B23\"".to_string(),
     ChartLineStyle::SequentialPartition
       => "pointsize 0.7 lw 1 pt 1 linecolor rgb \"#24A793\"".to_string(),
-    ChartLineStyle::Dynamic(ref atomics, ref min_chunks)
+    ChartLineStyle::Dynamic(ref atomics, ref min_chunks, ref chunk_size)
       => {
-        let color = format!("#{:02X}{:02X}{:02X}", atomics * 10 % 256, min_chunks * 20 % 256, (atomics + min_chunks) * 15 % 256);
+        let color = format!("#{:02X}{:02X}{:02X}", atomics * 10 % 256, min_chunks * 20 % 256, chunk_size * 30 % 256);
         format!("pointsize 0.7 lw 2 pt 1 linecolor rgb \"{}\"", color)
       },
   }

@@ -20,16 +20,20 @@ pub fn create_initial_task<S, T>(mask: u64, inputs: &[Box<[u64]>], temps: &[Box<
 {
   if inputs.len() == 1 {
     pending.store(1, Ordering::Relaxed);
-    create_task(mask, &inputs[0], &temps[0], &outputs[0], pending)
+    create_task::<S, T>(mask, &inputs[0], &temps[0], &outputs[0], pending)
   } else {
-    T::new_dataparallel::<InitialData>(initial_run, initial_finish, InitialData{ mask, inputs, temps, outputs, pending }, inputs.len() as u32)
+    T::new_dataparallel::<InitialData>(initial_run::<S, T>, initial_finish, InitialData{ mask, inputs, temps, outputs, pending }, inputs.len() as u32)
   }
 }
 
-fn initial_run<'a, 'b, 'c, T:Task>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<InitialData>, loop_arguments: T::LoopArguments<'c>) {
+fn initial_run<'a, 'b, 'c, S, T>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<InitialData>, loop_arguments: T::LoopArguments<'c>) 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
   let data = unsafe { T::TaskObject::get_data(task) };
   T::work_loop(loop_arguments, |i| {
-    workers.push_task(create_task(data.mask, &data.inputs[i as usize], &data.temps[i as usize], &data.outputs[i as usize], data.pending));
+    workers.push_task(create_task::<S, T>(data.mask, &data.inputs[i as usize], &data.temps[i as usize], &data.outputs[i as usize], data.pending));
   });
 }
 fn initial_finish<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<InitialData>) {
@@ -64,6 +68,13 @@ pub fn create_temp(size: usize) -> Box<[BlockInfo]> {
   }).collect()
 }
 
+pub fn create_temp_scheduler<S:Scheduler>(size: usize) -> Box<[BlockInfo]> {
+  let block_size: u64 = const { BLOCK_SIZE / S::CHUNK_SIZE as u64 };
+  (0 .. (size as u64 + block_size - 1) / block_size).map(|_| BlockInfo{
+    state: AtomicU64::new(STATE_INITIALIZED), aggregate: AtomicUsize::new(0), prefix: AtomicUsize::new(0)
+  }).collect()
+}
+
 pub fn reset(temp: &[BlockInfo]) {
   for i in 0 .. temp.len() {
     temp[i].state.store(STATE_INITIALIZED, Ordering::Relaxed);
@@ -72,14 +83,24 @@ pub fn reset(temp: &[BlockInfo]) {
   }
 }
 
-pub fn create_task<T:Task>(mask: u64, input: &[u64], temp: &[BlockInfo], output: &[AtomicU64], pending: &AtomicUsize) -> T {
+pub fn create_task<S, T>(mask: u64, input: &[u64], temp: &[BlockInfo], output: &[AtomicU64], pending: &AtomicUsize) -> T 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
+  let block_size = const { BLOCK_SIZE / S::CHUNK_SIZE as u64 };
   reset(temp);
-  T::new_dataparallel::<Data>(run, finish, Data{ mask, input, temp, output, pending }, ((input.len() as u64 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
+  T::new_dataparallel::<Data>(run::<S, T>, finish, Data{ mask, input, temp, output, pending }, ((input.len() as u64 + block_size - 1) / block_size) as u32)
 }
 
-fn run<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
-  let data = unsafe { TaskObject::get_data(task) };
+fn run<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) 
+  where 
+    S: Scheduler<Task=T>,
+    T: Task
+{
+  let data = unsafe { T::TaskObject::get_data(task) };
   let mut sequential = true;
+  let block_size = const { BLOCK_SIZE / S::CHUNK_SIZE as u64 };
   T::work_loop(loop_arguments, |block_index| {
     // Local scan
     // reduce-then-scan
