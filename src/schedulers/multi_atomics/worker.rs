@@ -39,11 +39,12 @@ impl<'a, const ATOMICS: usize, const MIN_CHUNKS: usize> WorkersTrait<'a> for Wor
   }
 }
 
-pub struct Scheduler<const ATOMICS: usize, const MIN_CHUNKS: usize>;
+pub struct Scheduler<const ATOMICS: usize, const MIN_CHUNKS: usize, const CHUNK_SIZE: usize>;
 
-impl<const ATOMICS: usize, const MIN_CHUNKS: usize> SchedulerTrait for Scheduler<ATOMICS, MIN_CHUNKS> {
+impl<const ATOMICS: usize, const MIN_CHUNKS: usize, const CHUNK_SIZE: usize> SchedulerTrait for Scheduler<ATOMICS, MIN_CHUNKS, CHUNK_SIZE> {
   type Workers<'a> = Workers<'a, ATOMICS, MIN_CHUNKS>;
   type Task = Task<ATOMICS, MIN_CHUNKS>;
+  const CHUNK_SIZE: usize = CHUNK_SIZE;
 
   fn get_name() -> String {
     format!("Multi-atomics {} {}", ATOMICS, MIN_CHUNKS)

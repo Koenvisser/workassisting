@@ -12,7 +12,7 @@ fn main() {
     return;
   }
 
-  let open_mp_enabled = build_open_mp();
+  let open_mp_enabled = false; //build_open_mp();
   if !open_mp_enabled {
     println!("Running the benchmarks without the OpenMP implementations");
   }

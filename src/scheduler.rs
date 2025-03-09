@@ -5,6 +5,7 @@ pub trait Scheduler {
   type Task: Task where Self: Sized;
   fn get_name() -> String;
   fn get_chart_line_style() -> ChartLineStyle;
+  const CHUNK_SIZE: usize;
 }
 
 pub trait Workers<'a> {

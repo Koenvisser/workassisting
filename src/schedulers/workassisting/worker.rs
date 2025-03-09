@@ -44,6 +44,7 @@ pub struct Scheduler;
 impl SchedulerTrait for Scheduler {
   type Workers<'a> = Workers<'a>;
   type Task = Task;
+  const CHUNK_SIZE: usize = 1;
 
   fn get_name() -> String {
     "Work assisting".to_string()
