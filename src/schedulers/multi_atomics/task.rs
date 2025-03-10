@@ -3,7 +3,7 @@ use core::sync::atomic::{ AtomicI32, AtomicU32, Ordering };
 use core::mem::forget;
 use core::ops::{Drop, Deref, DerefMut};
 use std::cmp::{max, min};
-use std::sync::RwLock;
+use crossbeam::utils::CachePadded;
 
 use super::worker::*;
 use crate::scheduler::Task as TaskTrait;
@@ -47,7 +47,7 @@ impl<const ATOMICS: usize, const MIN_CHUNKS: usize> TaskTrait for Task<ATOMICS, 
     for _ in 0..atomics_length {
       let current_index = loop_arguments.work_indexes_index.fetch_add(1, Ordering::Relaxed) as usize % atomics_length;
 
-      chunk_idx = loop_arguments.work_indexes.read().unwrap()[current_index].fetch_add(1, Ordering::Relaxed);
+      chunk_idx = loop_arguments.work_indexes[current_index].fetch_add(1, Ordering::Relaxed);
       while chunk_idx < loop_arguments.work_size[current_index] {
       //   println!("workassisting_loop: {:?}", loop_arguments);
 
@@ -57,7 +57,7 @@ impl<const ATOMICS: usize, const MIN_CHUNKS: usize> TaskTrait for Task<ATOMICS, 
         let chunk_index = chunk_idx;
         work(chunk_index);
 
-        chunk_idx = loop_arguments.work_indexes.read().unwrap()[current_index].fetch_add(1, Ordering::Relaxed);
+        chunk_idx = loop_arguments.work_indexes[current_index].fetch_add(1, Ordering::Relaxed);
       }
     }
     loop_arguments.empty_signal.task_empty();
@@ -81,8 +81,8 @@ pub struct TaskObject<T, const ATOMICS: usize, const MIN_CHUNKS: usize> {
   //   - no thread is still working on this task.
   // Hence we can run the finish function and deallocate the task.
   pub(super) active_threads: AtomicI32,
-  pub(super) work_indexes: RwLock<Vec<AtomicU32>>,
-  pub(super) work_indexes_index: AtomicU32,
+  pub(super) work_indexes: Vec<CachePadded<AtomicU32>>,
+  pub(super) work_indexes_index: CachePadded<AtomicU32>,
   pub(super) work_size: Vec<u32>,
   pub data: T,
 }
@@ -134,8 +134,8 @@ impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Task<ATOMICS, MIN_CHUNKS> {
     let mut work_size = distribute(work_size, atomics);
 
     let mut index = 0;
-    let work_indexes: Vec<AtomicU32> = (0..atomics).map(|i| {
-      let result = AtomicU32::new(index);
+    let work_indexes: Vec<CachePadded<AtomicU32>> = (0..atomics).map(|i| {
+      let result = AtomicU32::new(index).into();
       index += work_size[i];
       work_size[i] = index;
       result
@@ -146,8 +146,8 @@ impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Task<ATOMICS, MIN_CHUNKS> {
       finish,
       work_size,
       active_threads: AtomicI32::new(0),
-      work_indexes: RwLock::new(work_indexes),
-      work_indexes_index: AtomicU32::new(0),
+      work_indexes,
+      work_indexes_index: AtomicU32::new(0).into(),
       data
     });
     Task(Box::into_raw(task_box) as *mut TaskObject<(), ATOMICS, MIN_CHUNKS>)
@@ -162,8 +162,8 @@ impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Task<ATOMICS, MIN_CHUNKS> {
       finish: function,
       work_size: vec![],
       active_threads: AtomicI32::new(0),
-      work_indexes: RwLock::new(vec![]),
-      work_indexes_index: AtomicU32::new(0),
+      work_indexes: vec![],
+      work_indexes_index: AtomicU32::new(0).into(),
       data
     });
     Task(Box::into_raw(task_box) as *mut TaskObject<(), ATOMICS, MIN_CHUNKS>)
@@ -216,8 +216,8 @@ impl<T, const ATOMICS: usize, const MIN_CHUNKS: usize> TaskObject<T, ATOMICS, MI
 
 pub struct LoopArguments<'a, const ATOMICS: usize, const MIN_CHUNKS: usize> {
   pub work_size: &'a Vec<u32>,
-  pub work_indexes: &'a RwLock<Vec<AtomicU32>>,
-  pub work_indexes_index: &'a AtomicU32,
+  pub work_indexes: &'a Vec<CachePadded<AtomicU32>>,
+  pub work_indexes_index: &'a CachePadded<AtomicU32>,
   pub empty_signal: EmptySignal<'a, ATOMICS, MIN_CHUNKS>,
 }
 
