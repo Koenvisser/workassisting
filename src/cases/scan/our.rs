@@ -86,7 +86,8 @@ pub fn create_task<S, T>(input: &[u64], temp: &[BlockInfo], output: &[AtomicU64]
     T: Task
 {
   reset(temp);
-  T::new_dataparallel::<Data>(run::<S, T>, finish, Data{ input, temp, output, pending }, ((input.len() as u64 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
+  let block_size = const { BLOCK_SIZE / S::CHUNK_SIZE as u64 };
+  T::new_dataparallel::<Data>(run::<S, T>, finish, Data{ input, temp, output, pending }, ((input.len() as u64 + block_size - 1) / block_size) as u32)
 }
 
 fn run<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) 
