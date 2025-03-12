@@ -118,8 +118,7 @@ fn task_border_left_go<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *co
     T: Task
 {
   let data = unsafe { T::TaskObject::get_data(task) };
-
-  let mut temp = Align([0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE]);
+  let mut temp = [0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE];
   border_init(data.offset, data.matrix, &mut temp);
 
   T::work_loop(loop_arguments, |chunk_index| {
@@ -134,7 +133,7 @@ fn task_border_top_go<'a, 'b, S, T>(_workers: &T::Workers<'a>, task: *const T::T
 {
   let data = unsafe { T::TaskObject::get_data(task) };
 
-  let mut temp = Align([0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE]);
+  let mut temp = [0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE];
   border_init(data.offset, data.matrix, &mut temp);
 
   T::work_loop(loop_arguments, |chunk_index| {
@@ -179,13 +178,13 @@ fn task_inner_go<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const 
   let remaining = data.matrix.size() - data.offset - OUTER_BLOCK_SIZE;
   let rows = (remaining + INNER_BLOCK_SIZE_ROWS - 1) / INNER_BLOCK_SIZE_ROWS;
 
-  let mut temp_top = Align([0.0; INNER_BLOCK_SIZE_COLUMNS * OUTER_BLOCK_SIZE]);
-  let mut sum = Align([0.0; max(INNER_BLOCK_SIZE_COLUMNS, INNER_BLOCK_SIZE_ROWS)]);
+  let mut temp_top = [0.0; INNER_BLOCK_SIZE_COLUMNS * OUTER_BLOCK_SIZE];
+  let mut sum = [0.0; max(INNER_BLOCK_SIZE_COLUMNS, INNER_BLOCK_SIZE_ROWS)];
   let mut temp_index = 0;
 
   T::work_loop(loop_arguments, |chunk_index| {
     interior_chunk::<INNER_BLOCK_SIZE_ROWS, INNER_BLOCK_SIZE_COLUMNS>
-      (data.offset, rows, data.matrix, &mut temp_index, &mut temp_top.0, &mut sum.0, chunk_index as usize);
+      (data.offset, rows, data.matrix, &mut temp_index, &mut temp_top, &mut sum, chunk_index as usize);
     let i_global = data.offset + OUTER_BLOCK_SIZE + INNER_BLOCK_SIZE_ROWS * (chunk_index as usize % rows);
     let j_global = data.offset + OUTER_BLOCK_SIZE + INNER_BLOCK_SIZE_COLUMNS * (chunk_index as usize / rows);
 

@@ -148,7 +148,7 @@ fn sequential_tiled(matrix: &mut SquareMatrix) {
     // Handle the left and top border of this iteration
     let chunks = (matrix.size() - offset - TILE_SIZE) / TILE_SIZE;
     {
-      let mut temp = Align([0.0; TILE_SIZE * TILE_SIZE]);
+      let mut temp = [0.0; TILE_SIZE * TILE_SIZE];
       border_init(offset, matrix, &mut temp);
       for chunk_index in 0 .. chunks {
         border_left_chunk::<TILE_SIZE>(offset, matrix, &mut temp, chunk_index);
@@ -160,13 +160,13 @@ fn sequential_tiled(matrix: &mut SquareMatrix) {
 
     // Handle the interior of this iteration
     {
-      let mut temp_top = Align([0.0; TILE_SIZE * TILE_SIZE]);
-      let mut sum = Align([0.0; TILE_SIZE]);
+      let mut temp_top = [0.0; TILE_SIZE * TILE_SIZE];
+      let mut sum = [0.0; TILE_SIZE];
       let mut temp_index = 0;
 
       for chunk_index in 0 .. chunks * chunks {
         interior_chunk::<TILE_SIZE, TILE_SIZE>
-          (offset, chunks, matrix, &mut temp_index, &mut temp_top.0, &mut sum.0, chunk_index);
+          (offset, chunks, matrix, &mut temp_index, &mut temp_top, &mut sum, chunk_index);
       }
     }
   }
@@ -226,24 +226,24 @@ pub fn diagonal_tile(offset: usize, matrix: &SquareMatrix) {
   }
 }
 
-#[repr(C)]
-#[repr(align(64))]
-pub struct Align<T>(T);
+// #[repr(C)]
+// #[repr(align(64))]
+// pub struct Align<T>(T);
 
 // Initialization work for border_left_chunk and border_top_chunk.
 #[inline(always)]
-pub fn border_init(offset: usize, matrix: &SquareMatrix, temp: &mut Align<[f32; TILE_SIZE * TILE_SIZE]>) {
+pub fn border_init(offset: usize, matrix: &SquareMatrix, temp: &mut [f32; TILE_SIZE * TILE_SIZE]) {
   // Copy part of the matrix to 'temp'
   for i in 0 .. TILE_SIZE {
     let matrix_slice = unsafe { *matrix.slice32(offset + i, offset).get() };
     for j in 0 .. TILE_SIZE {
-      temp.0[i * TILE_SIZE + j] = matrix_slice.0[j];
+      temp[i * TILE_SIZE + j] = matrix_slice.0[j];
     }
   }
 }
 
 #[inline(always)]
-pub fn border_left_chunk<const BORDER_BLOCK_SIZE: usize>(offset: usize, matrix: &SquareMatrix, temp: &Align<[f32; TILE_SIZE * TILE_SIZE]>, chunk_index: usize) {
+pub fn border_left_chunk<const BORDER_BLOCK_SIZE: usize>(offset: usize, matrix: &SquareMatrix, temp: &[f32; TILE_SIZE * TILE_SIZE], chunk_index: usize) {
   let i_global = offset + TILE_SIZE + BORDER_BLOCK_SIZE * chunk_index;
   let j_global = offset;
   for j in 0 .. TILE_SIZE {
@@ -251,24 +251,24 @@ pub fn border_left_chunk<const BORDER_BLOCK_SIZE: usize>(offset: usize, matrix: 
       let mut sum = 0.0;
       let slice = unsafe { *matrix.slice32(i_global + i, j_global).get() };
       for k in 0 .. j {
-        sum += slice.0[k] * temp.0[TILE_SIZE * k + j];
+        sum += slice.0[k] * temp[TILE_SIZE * k + j];
       }
       matrix.write(
         (i_global + i, j_global + j),
-        (matrix[(i_global + i, j_global + j)] - sum) / temp.0[j * TILE_SIZE + j]
+        (matrix[(i_global + i, j_global + j)] - sum) / temp[j * TILE_SIZE + j]
       );
     }
   }
 }
 
 #[inline(always)]
-pub fn border_top_chunk<const BORDER_BLOCK_SIZE: usize>(offset: usize, matrix: &SquareMatrix, temp: &Align<[f32; TILE_SIZE * TILE_SIZE]>, chunk_index: usize) {
+pub fn border_top_chunk<const BORDER_BLOCK_SIZE: usize>(offset: usize, matrix: &SquareMatrix, temp: &[f32; TILE_SIZE * TILE_SIZE], chunk_index: usize) {
   let i_global = offset;
   let j_global = offset + TILE_SIZE + BORDER_BLOCK_SIZE * (chunk_index as usize);
   for j in 0 .. TILE_SIZE {
     for i in 1 .. TILE_SIZE {
       let mut sum = 0.0;
-      let temp_slice = &temp.0[i * TILE_SIZE .. i * TILE_SIZE + i];
+      let temp_slice = &temp[i * TILE_SIZE .. i * TILE_SIZE + i];
       for k in 0 .. i {
         sum += temp_slice[k] * matrix[(i_global + k, j_global + j)];
       }
