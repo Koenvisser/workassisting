@@ -131,9 +131,9 @@ fn reference_sequential_single(array: &[AtomicU32]) -> u64 {
   output(array)
 }
 
-#[repr(C)]
-#[repr(align(64))]
-pub struct Align<T>(T);
+// #[repr(C)]
+// #[repr(align(64))]
+// pub struct Align<T>(T);
 
 #[inline(always)]
 pub fn parallel_partition_chunk(input: &[AtomicU32], output: &[AtomicU32], pivot: u32, counters: &AtomicU64, chunk_index: usize) {
@@ -146,7 +146,7 @@ pub fn parallel_partition_chunk(input: &[AtomicU32], output: &[AtomicU32], pivot
   let input1: &[u32] = unsafe { std::mem::transmute(input) };
 
   specialize_if!(start + BLOCK_SIZE <= input.len(), BLOCK_SIZE, input.len() - start, |end| {
-    let mut values = Align([0; BLOCK_SIZE]);
+    let mut values = [0; BLOCK_SIZE];
     let mut left_count = 0;
     for (i, value) in input1[start .. start + end].iter().copied().enumerate() {
       let destination;
@@ -156,7 +156,7 @@ pub fn parallel_partition_chunk(input: &[AtomicU32], output: &[AtomicU32], pivot
       } else {
         destination = end as u64 - (i as u64 - left_count) - 1;
       }
-      values.0[destination as usize] = value;
+      values[destination as usize] = value;
     }
     let right_count = end as u64 - left_count;
     let counters_value = counters.fetch_add((right_count << 32) | left_count, Ordering::SeqCst);
@@ -165,7 +165,7 @@ pub fn parallel_partition_chunk(input: &[AtomicU32], output: &[AtomicU32], pivot
     if left_count != 0 {
       unsafe {
         std::ptr::copy_nonoverlapping(
-          &values.0[0],
+          &values[0],
           output[left_offset].as_ptr(),
           left_count as usize);
       }
@@ -173,7 +173,7 @@ pub fn parallel_partition_chunk(input: &[AtomicU32], output: &[AtomicU32], pivot
     if right_count != 0 {
       unsafe {
         std::ptr::copy_nonoverlapping(
-          &values.0[left_count as usize],
+          &values[left_count as usize],
           output[right_offset].as_ptr(),
           right_count as usize);
       }
