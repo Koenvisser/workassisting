@@ -22,7 +22,13 @@ struct Data<'a> {
   counters: AtomicU64, //crossbeam::utils::CachePadded<AtomicU64>
 }
 
-pub fn create_task<'a, T:Task>(pending_tasks: &'a AtomicU64, input: &'a [AtomicU32], output: &'a [AtomicU32], input_output_flipped: bool) -> Option<T> {
+pub fn create_task<'a, S, T>(pending_tasks: &'a AtomicU64, input: &'a [AtomicU32], output: &'a [AtomicU32], input_output_flipped: bool) -> Option<T> 
+  where
+    S: Scheduler<Task = T>,
+    T: Task,
+    [(); S::CHUNK_SIZE]: ,
+    [(); BLOCK_SIZE / S::CHUNK_SIZE]:
+{
   assert_eq!(input.len(), output.len());
 
   if input.len() == 0 {
@@ -63,10 +69,16 @@ pub fn create_task<'a, T:Task>(pending_tasks: &'a AtomicU64, input: &'a [AtomicU
     counters: AtomicU64::new(0)
   };
 
-  Some(T::new_dataparallel(partition_run, partition_finish, data, ((input.len() - 1 + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32))
+  Some(T::new_dataparallel(partition_run::<S, T>, partition_finish, data, ((input.len() - 1 + {BLOCK_SIZE / S::CHUNK_SIZE} - 1) / {BLOCK_SIZE / S::CHUNK_SIZE}) as u32))
 }
 
-fn partition_run<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) {
+fn partition_run<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) 
+  where
+    S: Scheduler<Task = T>,
+    T: Task,
+    [(); S::CHUNK_SIZE]: ,
+    [(); BLOCK_SIZE / S::CHUNK_SIZE]:
+{
   let data = unsafe { T::TaskObject::get_data(task) };
 
   let pivot = data.input[0].load(Ordering::Relaxed);
@@ -75,11 +87,17 @@ fn partition_run<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const 
   let output = data.output;
   let counters = &data.counters;
   T::work_loop(loop_arguments, |chunk_index| {
-    parallel_partition_chunk(input, output, pivot, counters, chunk_index as usize);
+    parallel_partition_chunk::<{S::CHUNK_SIZE}>(input, output, pivot, counters, chunk_index as usize);
   });
 }
 
-fn partition_finish<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Data>) {
+fn partition_finish<'a, 'b, S, T>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Data>) 
+  where
+    S: Scheduler<Task = T>,
+    T: Task,
+    [(); S::CHUNK_SIZE]: ,
+    [(); BLOCK_SIZE / S::CHUNK_SIZE]:
+{
   let data = unsafe { T::TaskObject::take_data(task) };
 
   let counters = data.counters.load(Ordering::Relaxed);

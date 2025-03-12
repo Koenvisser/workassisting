@@ -106,8 +106,6 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
       S::Workers::run(thread_count, our::create_task::<S, S::Task>(&matrices, &pending));
     });
   }
-
-  
 }
 
 fn test<F: FnOnce(SquareMatrix) -> SquareMatrix>(name: &str, f: F) {
