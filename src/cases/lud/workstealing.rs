@@ -41,7 +41,7 @@ struct Start<'a> {
 
 // Performs the first iteration of LU decomposition and schedule the later work.
 fn task_start(worker: Worker, data: Box<Start>) {
-  diagonal_tile::<1>(0, data.matrix);
+  diagonal_tile(0, data.matrix);
   schedule_border(worker, data.matrix, 0, data.synchronisation_var1, data.synchronisation_var2, data.pending);
 }
 
@@ -82,8 +82,8 @@ struct Border<'a> {
 fn task_border_left(worker: Worker, data: Box<Border>) {
   let mut temp = Align([0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE]);
 
-  border_init::<1>(data.offset, data.matrix, &mut temp);
-  border_left_chunk::<BORDER_BLOCK_SIZE, 1>(data.offset, data.matrix, &temp, data.chunk_index);
+  border_init(data.offset, data.matrix, &mut temp);
+  border_left_chunk::<BORDER_BLOCK_SIZE>(data.offset, data.matrix, &temp, data.chunk_index);
 
   if data.synchronisation_var1.fetch_sub(1, Ordering::AcqRel) == 1 {
     schedule_interior(worker, data.matrix, data.offset, data.synchronisation_var1, data.synchronisation_var2, data.pending);
@@ -93,8 +93,8 @@ fn task_border_left(worker: Worker, data: Box<Border>) {
 fn task_border_top(worker: Worker, data: Box<Border>) {
   let mut temp = Align([0.0; OUTER_BLOCK_SIZE * OUTER_BLOCK_SIZE]);
 
-  border_init::<1>(data.offset, data.matrix, &mut temp);
-  border_top_chunk::<BORDER_BLOCK_SIZE, 1>(data.offset, data.matrix, &temp, data.chunk_index);
+  border_init(data.offset, data.matrix, &mut temp);
+  border_top_chunk::<BORDER_BLOCK_SIZE>(data.offset, data.matrix, &temp, data.chunk_index);
 
   if data.synchronisation_var1.fetch_sub(1, Ordering::AcqRel) == 1 {
     schedule_interior(worker, data.matrix, data.offset, data.synchronisation_var1, data.synchronisation_var2, data.pending);
@@ -162,7 +162,7 @@ fn task_interior(worker: Worker, data: Box<Interior>) {
   let mut sum = Align([0.0; max(INNER_BLOCK_SIZE_COLUMNS, INNER_BLOCK_SIZE_ROWS)]);
   let mut temp_index = 0;
   
-  interior_chunk::<INNER_BLOCK_SIZE_ROWS, INNER_BLOCK_SIZE_COLUMNS, 1>
+  interior_chunk::<INNER_BLOCK_SIZE_ROWS, INNER_BLOCK_SIZE_COLUMNS>
     (data.offset, data.rows, data.matrix, &mut temp_index, &mut temp_top.0, &mut sum.0, chunk_index);
 
   let i_global = data.offset + OUTER_BLOCK_SIZE + INNER_BLOCK_SIZE_ROWS * (chunk_index as usize % data.rows);
@@ -173,7 +173,7 @@ fn task_interior(worker: Worker, data: Box<Interior>) {
     if old_remaining == 1 {
       // All inner chunks of the first chunk (in terms of outer chunk sizes) are finished.
       // Start working on the diagonal chunk of the next iteration already.
-      diagonal_tile::<1>(data.offset + OUTER_BLOCK_SIZE, data.matrix);
+      diagonal_tile(data.offset + OUTER_BLOCK_SIZE, data.matrix);
     }
   }
 
