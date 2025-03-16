@@ -32,24 +32,25 @@ pub const INNER_BLOCK_SIZE_COLUMNS: usize = 32;
 // The matrix size should be a multiple of OUTER_BLOCK_SIZE.
 // OUTER_BLOCK_SIZE should be a multiple of BORDER_BLOCK_SIZE, INNER_BLOCK_SIZE_ROWS and INNER_BLOCK_SIZE_COLUMNS.
 
-pub fn create_task<S, T>(matrices: &[(SquareMatrix, AtomicU64, AtomicU64)], pending: &AtomicU64) -> T 
+pub fn create_task<S, T>(matrices: &[(SquareMatrix<{TILE_SIZE / S::CHUNK_SIZE}>, AtomicU64, AtomicU64)], pending: &AtomicU64) -> T 
   where 
     S: Scheduler<Task=T>,
     T: Task,
     [(); S::CHUNK_SIZE]: ,
+    [(); {TILE_SIZE / S::CHUNK_SIZE}]: ,
     [(); (TILE_SIZE / S::CHUNK_SIZE) * (TILE_SIZE / S::CHUNK_SIZE)]: ,
     [(); max(INNER_BLOCK_SIZE_COLUMNS / S::CHUNK_SIZE, INNER_BLOCK_SIZE_ROWS / S::CHUNK_SIZE)]:
 { 
   pending.store(matrices.len() as u64, Ordering::Relaxed);
-  T::new_dataparallel::<Init>(task_init_go::<S, T>, task_init_finish::<T>, Init{ matrices, pending }, matrices.len() as u32)
+  T::new_dataparallel::<Init<{TILE_SIZE / S::CHUNK_SIZE}>>(task_init_go::<S, T>, task_init_finish::<T>, Init{ matrices, pending }, matrices.len() as u32)
 }
 
-struct Init<'a> {
-  matrices: &'a[(SquareMatrix, AtomicU64, AtomicU64)], // Only the first AtomicU64 is used
+struct Init<'a, const N: usize> {
+  matrices: &'a[(SquareMatrix<N>, AtomicU64, AtomicU64)], // Only the first AtomicU64 is used
   pending: &'a AtomicU64
 }
 
-fn task_init_go<'a, 'b, 'c, S, T>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<Init>, loop_arguments: T::LoopArguments<'c>) 
+fn task_init_go<'a, 'b, 'c, S, T>(workers: &'a T::Workers<'b>, task: *const T::TaskObject<Init<{TILE_SIZE / S::CHUNK_SIZE}>>, loop_arguments: T::LoopArguments<'c>) 
   where
     S: Scheduler<Task=T>,
     T: Task,
@@ -66,21 +67,25 @@ fn task_init_go<'a, 'b, 'c, S, T>(workers: &'a T::Workers<'b>, task: *const T::T
   });
 }
 
-fn task_init_finish<'a, 'b, T:Task>(_workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Init>) {
+fn task_init_finish<'a, 'b, S, T>(_workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Init<{TILE_SIZE / S::CHUNK_SIZE}>>) 
+  where
+    S: Scheduler<Task=T>,
+    T: Task
+{
   unsafe {
     // Assure that the task gets dropped
     drop(Box::from_raw(task));
   }
 }
 
-struct Data<'a> {
-  matrix: &'a SquareMatrix,
+struct Data<'a, const N: usize> {
+  matrix: &'a SquareMatrix<N>,
   offset: usize,
   synchronisation_var: &'a AtomicU64,
   pending: &'a AtomicU64,
 }
 
-fn start_iteration<'a, S, T>(workers: &T::Workers<'a>, offset: usize, matrix: &SquareMatrix, synchronisation_var: &AtomicU64, pending: &AtomicU64) 
+fn start_iteration<'a, S, T>(workers: &T::Workers<'a>, offset: usize, matrix: &SquareMatrix<{TILE_SIZE / S::CHUNK_SIZE}>, synchronisation_var: &AtomicU64, pending: &AtomicU64) 
   where
     S: Scheduler<Task=T>,
     T: Task,
@@ -189,11 +194,12 @@ fn task_border_finish<'a, S, T>(workers: &T::Workers<'a>, task: *mut T::TaskObje
   );
 }
 
-fn task_inner_go<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data>, loop_arguments: T::LoopArguments<'c>) 
+fn task_inner_go<'a, 'b, 'c, S, T>(_workers: &'a T::Workers<'b>, task: *const T::TaskObject<Data<{TILE_SIZE / S::CHUNK_SIZE}>>, loop_arguments: T::LoopArguments<'c>) 
   where 
     S: Scheduler<Task=T>,
     T: Task,
     [(); S::CHUNK_SIZE]: ,
+    [(); {TILE_SIZE / S::CHUNK_SIZE}]: ,
     [(); (INNER_BLOCK_SIZE_COLUMNS / S::CHUNK_SIZE) * (OUTER_BLOCK_SIZE / S::CHUNK_SIZE)]: ,
     [(); max(INNER_BLOCK_SIZE_COLUMNS / S::CHUNK_SIZE, INNER_BLOCK_SIZE_ROWS / S::CHUNK_SIZE)]:
 {

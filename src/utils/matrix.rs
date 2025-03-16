@@ -6,18 +6,18 @@ use core::ops::{IndexMut, Index, Mul};
 #[repr(C)]
 #[repr(align(64))]
 #[derive(Clone, Copy)]
-pub struct F32x32(pub [f32; 32]);
+pub struct F32xN<const N: usize>(pub [f32; N]);
 
 // Square matrix with interior mutability
-pub struct SquareMatrix {
+pub struct SquareMatrix<const N: usize> {
   size: usize,
-  data: Box<[UnsafeCell<F32x32>]>
+  data: Box<[UnsafeCell<F32xN<N>>]>
 }
-unsafe impl Sync for SquareMatrix {}
+unsafe impl<const N: usize> Sync for SquareMatrix<N> {}
 
-impl SquareMatrix {
-  pub fn new(size: usize) -> SquareMatrix {
-    let data: Vec<F32x32> = vec![F32x32([0.0; 32]); size * size / 32];
+impl<const N: usize> SquareMatrix<N> {
+  pub fn new(size: usize) -> SquareMatrix<N> {
+    let data: Vec<F32xN<N>> = vec![F32xN([0.0; N]); size * size / N];
     SquareMatrix{
       size,
       // Safety: f32 and UnsafeCell<f32> have the same representation in memory
@@ -28,7 +28,7 @@ impl SquareMatrix {
   #[inline(always)]
   fn data_f32(&self) -> &[UnsafeCell<f32>] {
     unsafe {
-      std::slice::from_raw_parts(self.data.as_ptr() as *const UnsafeCell<f32>, self.data.len() * 32)
+      std::slice::from_raw_parts(self.data.as_ptr() as *const UnsafeCell<f32>, self.data.len() * N)
     }
   }
 
@@ -66,12 +66,12 @@ impl SquareMatrix {
   }
 
   #[inline(always)]
-  pub fn slice32(&self, row: usize, column_start: usize) -> &UnsafeCell<F32x32> {
+  pub fn slice32(&self, row: usize, column_start: usize) -> &UnsafeCell<F32xN<N>> {
     let index = row * self.size + column_start;
-    unsafe { self.data.get_unchecked(index / 32) }
+    unsafe { self.data.get_unchecked(index / N) }
   }
 
-  pub fn upper_triangle_with_diagonal(&self) -> SquareMatrix {
+  pub fn upper_triangle_with_diagonal(&self) -> SquareMatrix<N> {
     let mut output = SquareMatrix::new(self.size);
 
     for row in 0 .. self.size {
@@ -83,7 +83,7 @@ impl SquareMatrix {
     output
   }
 
-  pub fn lower_triangle_with_1_diagonal(&self) -> SquareMatrix {
+  pub fn lower_triangle_with_1_diagonal(&self) -> SquareMatrix<N> {
     let mut output = SquareMatrix::new(self.size);
 
     for row in 0 .. self.size {
@@ -99,7 +99,7 @@ impl SquareMatrix {
     output
   }
 
-  pub fn copy_to(&self, other: &SquareMatrix) {
+  pub fn copy_to(&self, other: &SquareMatrix<N>) {
     assert_eq!(self.data.len(), other.data.len());
     for i in 0 .. self.data.len() {
       unsafe {
@@ -109,9 +109,9 @@ impl SquareMatrix {
   }
 }
 
-impl Clone for SquareMatrix {
+impl<const N: usize> Clone for SquareMatrix<N> {
   fn clone(&self) -> Self {
-    let mut data: Vec<F32x32> = vec![F32x32([0.0; 32]); self.data.len()];
+    let mut data: Vec<F32xN<N>> = vec![F32xN([0.0; N]); self.data.len()];
     for i in 0 .. data.len() {
       data[i] = unsafe { *self.data[i].get() };
     }
@@ -119,7 +119,7 @@ impl Clone for SquareMatrix {
   }
 }
 
-impl Index<(usize, usize)> for SquareMatrix {
+impl<const N: usize> Index<(usize, usize)> for SquareMatrix<N> {
   type Output = f32;
 
   #[inline(always)]
@@ -128,17 +128,17 @@ impl Index<(usize, usize)> for SquareMatrix {
   }
 }
 
-impl IndexMut<(usize, usize)> for SquareMatrix {
+impl<const N: usize> IndexMut<(usize, usize)> for SquareMatrix<N> {
   #[inline(always)]
   fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
     unsafe { &mut *self.get_unsafe_cell(index).get() }
   }
 }
 
-impl Mul for &SquareMatrix {
-  type Output = SquareMatrix;
+impl<const N: usize> Mul for &SquareMatrix<N> {
+  type Output = SquareMatrix<N>;
 
-  fn mul(self, other: &SquareMatrix) -> Self::Output {
+  fn mul(self, other: &SquareMatrix<N>) -> Self::Output {
     assert_eq!(self.size, other.size);
     let mut output = SquareMatrix::new(self.size);
     for row in 0 .. self.size {
@@ -154,7 +154,7 @@ impl Mul for &SquareMatrix {
   }
 }
 
-impl fmt::Debug for SquareMatrix {
+impl<const N: usize> fmt::Debug for SquareMatrix<N> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "SquareMatrix ({}x{}) {{", self.size, self.size)?;
     for row in 0 .. self.size {

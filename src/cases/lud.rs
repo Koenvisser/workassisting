@@ -62,7 +62,7 @@ pub fn run(openmp_enabled: bool) {
 fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
   let input = parse_input(size);
 
-  let mut matrices: Vec<(SquareMatrix, AtomicU64, AtomicU64)> = (0 .. matrix_count).map(|_| {
+  let mut matrices: Vec<(SquareMatrix<TILE_SIZE>, AtomicU64, AtomicU64)> = (0 .. matrix_count).map(|_| {
     (SquareMatrix::new(size), AtomicU64::new(0), AtomicU64::new(0))
   }).collect();
 
@@ -92,21 +92,25 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
   .open_mp_lud(openmp_enabled, "OpenMP (tasks)", true, ChartLineStyle::OmpTask, &filename(size), matrix_count);
   // .our(benchmark_our);
 
-  for_each_scheduler_with_arg!(benchmark_our, benchmark, matrix_count, input.clone(), &mut matrices, &pending);
+  for_each_scheduler_with_arg!(benchmark_our, benchmark, matrix_count, size);
   
   fn benchmark_our<S>(
     benchmark: Benchmarker<()>, 
     matrix_count: usize, 
-    input: SquareMatrix,
-    matrices: &mut Vec<(SquareMatrix, AtomicU64, AtomicU64)>,
-    pending: &AtomicU64
+    size: usize
   ) -> Benchmarker<()> 
   where 
     S: Scheduler,
-    [(); S::CHUNK_SIZE]: ,
-    [(); (TILE_SIZE / S::CHUNK_SIZE) * (TILE_SIZE / S::CHUNK_SIZE)]: ,
-    [(); our::max(our::INNER_BLOCK_SIZE_COLUMNS / S::CHUNK_SIZE, our::INNER_BLOCK_SIZE_ROWS / S::CHUNK_SIZE)]:
+    [(); TILE_SIZE / S::CHUNK_SIZE]: 
   {
+    let input = parse_input(size);
+    let pending = AtomicU64::new(0);
+    let mut matrices: Vec<(SquareMatrix<{TILE_SIZE / S::CHUNK_SIZE}>, AtomicU64, AtomicU64)> = (0 .. matrix_count).map(|_| {
+      (SquareMatrix::new(size), AtomicU64::new(0), AtomicU64::new(0))
+    }).collect();
+    for i in 0 .. matrix_count {
+      input.copy_to(&mut matrices[i].0);
+    }
     return benchmark.parallel(&S::get_name(), S::get_chart_line_style(), |thread_count| {
       for i in 0 .. matrix_count {
         input.copy_to(&mut matrices[i].0);
@@ -116,7 +120,7 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
   }
 }
 
-fn test<F: FnOnce(SquareMatrix) -> SquareMatrix>(name: &str, f: F) {
+fn test<F: FnOnce(SquareMatrix<N>) -> SquareMatrix<N>, const N: usize>(name: &str, f: F) {
   let matrix = parse_input(512);
 
   let input = matrix.clone();
@@ -145,8 +149,7 @@ fn sequential(matrix: &mut SquareMatrix) {
   }
 }
 
-fn sequential_tiled(matrix: &mut SquareMatrix) {
-  const TILE_SIZE: usize = 32;
+fn sequential_tiled(matrix: &mut SquareMatrix<TILE_SIZE>) {
   for offset in (0 .. matrix.size()).step_by(TILE_SIZE) {
     // Handle the tile on the diagonal, starting at (offset, offset).
     diagonal_tile::<1>(offset, matrix);
@@ -193,7 +196,7 @@ fn filename(size: usize) -> String {
   "./rodinia_3.1/data/lud/".to_owned() + &size.to_string() + ".dat"
 }
 
-fn parse_input(size: usize) -> SquareMatrix {
+fn parse_input<const N: usize>(size: usize) -> SquareMatrix<N> {
   let mut matrix = SquareMatrix::new(size);
 
   let content = std::fs::read_to_string(filename(size)).expect("Data file with input matrix not found");
