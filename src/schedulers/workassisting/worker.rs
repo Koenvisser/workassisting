@@ -47,7 +47,7 @@ impl<const CHUNK_SIZE:usize> SchedulerTrait for Scheduler<CHUNK_SIZE> {
   const CHUNK_SIZE: usize = CHUNK_SIZE;
 
   fn get_name() -> String {
-    "Work assisting".to_string()
+    format!("WorkAssisting {}", CHUNK_SIZE)
   }
 
   fn get_chart_line_style() -> ChartLineStyle {

@@ -43,7 +43,7 @@ fn chart_line_style_to_str(style: ChartLineStyle) -> String {
   match style {
     ChartLineStyle::WorkAssisting(ref chunk_size)
       => {
-        let color = format!("#C0{:02X}35", chunk_size * 20 % 256);
+        let color = format!("#{:02X}0A35", chunk_size * 50 % 256);
         format!("pointsize 0.4 lw 2 pt 7 linecolor rgb \"{}\"", color)
       },
     ChartLineStyle::WorkStealing
