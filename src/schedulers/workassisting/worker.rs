@@ -39,19 +39,19 @@ impl<'a> WorkersTrait<'a> for Workers<'a> {
   }
 }
 
-pub struct Scheduler;
+pub struct Scheduler<const CHUNK_SIZE:usize>;
 
-impl SchedulerTrait for Scheduler {
+impl<const CHUNK_SIZE:usize> SchedulerTrait for Scheduler<CHUNK_SIZE> {
   type Workers<'a> = Workers<'a>;
   type Task = Task;
-  const CHUNK_SIZE: usize = 1;
+  const CHUNK_SIZE: usize = CHUNK_SIZE;
 
   fn get_name() -> String {
     "Work assisting".to_string()
   }
 
   fn get_chart_line_style() -> ChartLineStyle {
-    ChartLineStyle::WorkAssisting
+    ChartLineStyle::WorkAssisting(CHUNK_SIZE)
   }
 }
 

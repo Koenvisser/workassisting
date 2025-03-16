@@ -29,7 +29,7 @@ pub fn run(openmp_enabled: bool) {
     result.0
   });
 
-  test_schedulers::<crate::schedulers::workassisting::worker::Scheduler>();
+  test_schedulers::<crate::schedulers::workassisting::worker::Scheduler<1>>();
 
   fn test_schedulers<S>()
     where 

@@ -35,7 +35,7 @@ fn run_on(open_mp_enabled: bool, size: usize) {
   )
   .parallel("Sequential partition", ChartLineStyle::SequentialPartition, |thread_count| {
     let pending_tasks = AtomicU64::new(1);
-    WorkAssisting::run(thread_count, create_task_reset::<crate::schedulers::workassisting::worker::Scheduler, crate::schedulers::workassisting::task::Task>(&array1, &pending_tasks, Kind::OnlyTaskParallel));
+    WorkAssisting::run(thread_count, create_task_reset::<crate::schedulers::workassisting::worker::Scheduler<1>, crate::schedulers::workassisting::task::Task>(&array1, &pending_tasks, Kind::OnlyTaskParallel));
     assert_eq!(pending_tasks.load(Ordering::Relaxed), 0);
     output(&array1)
   })
