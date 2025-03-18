@@ -15,5 +15,3 @@ libc = "0.2"
 [profile.dev]
 opt-level = 3
 
-[toolchain]
-channel = "nightly"
