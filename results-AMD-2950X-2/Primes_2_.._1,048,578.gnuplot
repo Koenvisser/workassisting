@@ -15,6 +15,6 @@ plot './results/Primes_2_.._1,048,578.dat' using 1:2 title "Rayon" pointsize 0.7
   './results/Primes_2_.._1,048,578.dat' using 1:5 title "Work stealing" pointsize 0.7 lw 1 pt 6 linecolor rgb "#5B2182" with linespoints, \
   './results/Primes_2_.._1,048,578.dat' using 1:6 title "Multi-atomics 64 1 1" pointsize 0.7 lw 2 pt 1 linecolor rgb "#80141E" with linespoints, \
   './results/Primes_2_.._1,048,578.dat' using 1:7 title "Multi-atomics 64 10 1" pointsize 0.7 lw 2 pt 1 linecolor rgb "#80C81E" with linespoints, \
-  './results/Primes_2_.._1,048,578.dat' using 1:8 title "Multi-atomics 64 1 4" pointsize 0.7 lw 2 pt 1 linecolor rgb "#801478" with linespoints, \
-  './results/Primes_2_.._1,048,578.dat' using 1:9 title "WorkAssisting 1" pointsize 0.4 lw 2 pt 7 linecolor rgb "#320A35" with linespoints, \
-  './results/Primes_2_.._1,048,578.dat' using 1:10 title "WorkAssisting 4" pointsize 0.4 lw 2 pt 7 linecolor rgb "#C80A35" with linespoints
+  './results/Primes_2_.._1,048,578.dat' using 1:8 title "Multi-atomics 64 1 32" pointsize 0.7 lw 2 pt 1 linecolor rgb "#8014C0" with linespoints, \
+  './results/Primes_2_.._1,048,578.dat' using 1:9 title "WorkAssisting 1" pointsize 0.4 lw 2 pt 7 linecolor rgb "#070A35" with linespoints, \
+  './results/Primes_2_.._1,048,578.dat' using 1:10 title "WorkAssisting 32" pointsize 0.4 lw 2 pt 7 linecolor rgb "#E00A35" with linespoints
