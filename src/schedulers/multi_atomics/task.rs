@@ -43,23 +43,23 @@ impl<const ATOMICS: usize, const MIN_CHUNKS: usize> TaskTrait for Task<ATOMICS, 
     let mut loop_arguments = loop_arguments;
 
     let atomics_length = loop_arguments.work_size.len();
-
+    
+    // To make sure all atomics are finished, we need to loop over all atomics.
     for _ in 0..atomics_length {
+      // Next atomic to work on
       let current_index = loop_arguments.work_indexes_index.fetch_add(1, Ordering::Relaxed) as usize % atomics_length;
 
+      // Get the chunk index from the atomic
       chunk_idx = loop_arguments.work_indexes[current_index].fetch_add(1, Ordering::Relaxed);
+      // Keep working on the atomic until all chunks are done
       while chunk_idx < loop_arguments.work_size[current_index] {
-      //   println!("workassisting_loop: {:?}", loop_arguments);
-
-      //   println!("Doing work: {:?}", chunk_idx);
-
-        // Copy chunk_index to an immutable variable, such that a user of this macro cannot mutate it.
         let chunk_index = chunk_idx;
         work(chunk_index);
 
         chunk_idx = loop_arguments.work_indexes[current_index].fetch_add(1, Ordering::Relaxed);
       }
     }
+    
     loop_arguments.empty_signal.task_empty();
   }
 }
@@ -134,6 +134,7 @@ impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Task<ATOMICS, MIN_CHUNKS> {
     let mut work_size = distribute(work_size, atomics);
 
     let mut index = 0;
+    // Distribute the work over the atomics, each atomic starts at the end of the previous atomic.
     let work_indexes: Vec<CachePadded<AtomicU32>> = (0..atomics).map(|i| {
       let result = AtomicU32::new(index).into();
       index += work_size[i];
@@ -157,6 +158,7 @@ impl<const ATOMICS: usize, const MIN_CHUNKS: usize> Task<ATOMICS, MIN_CHUNKS> {
     function: fn(workers: &Workers<ATOMICS, MIN_CHUNKS>, data: *mut TaskObject<T, ATOMICS, MIN_CHUNKS>) -> (),
     data: T
   ) -> Task<ATOMICS, MIN_CHUNKS> {
+    // The work_size is empty, as there is no work to distribute.
     let task_box: Box<TaskObject<T, ATOMICS, MIN_CHUNKS>> = Box::new(TaskObject{
       work: None,
       finish: function,
