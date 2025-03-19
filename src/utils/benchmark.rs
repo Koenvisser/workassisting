@@ -27,7 +27,7 @@ pub enum ChartStyle {
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum ChartLineStyle {
-  WorkAssisting,
+  WorkAssisting(usize),
   WorkStealing,
   OmpStatic,
   OmpDynamic,
@@ -41,8 +41,11 @@ pub enum ChartLineStyle {
 
 fn chart_line_style_to_str(style: ChartLineStyle) -> String {
   match style {
-    ChartLineStyle::WorkAssisting
-      => "pointsize 0.4 lw 2 pt 7 linecolor rgb \"#C00A35\"".to_string(),
+    ChartLineStyle::WorkAssisting(ref chunk_size)
+      => {
+        let color = format!("#{:02X}0A35", chunk_size * 50 % 256);
+        format!("pointsize 0.4 lw 2 pt 7 linecolor rgb \"{}\"", color)
+      },
     ChartLineStyle::WorkStealing
       => "pointsize 0.7 lw 1 pt 6 linecolor rgb \"#5B2182\"".to_string(),
     ChartLineStyle::OmpStatic

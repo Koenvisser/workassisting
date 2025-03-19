@@ -79,11 +79,11 @@ fn run_on(open_mp_enabled: bool, array_count: usize, size: usize) {
     reference_sequential(mask, &inputs, &outputs);
   })
   .parallel("Outer parallelism", ChartLineStyle::SequentialPartition, |thread_count| {
-    let task = outer::create_task::<WorkAssisting::worker::Scheduler, WorkAssisting::task::Task>(mask, &inputs, &outputs);
+    let task = outer::create_task::<WorkAssisting::worker::Scheduler<1>, WorkAssisting::task::Task>(mask, &inputs, &outputs);
     WorkAssisting::worker::Workers::run(thread_count, task);
   })
   .parallel("Inner parallelism", ChartLineStyle::Static, |thread_count| {
-    let task = inner::create_task::<WorkAssisting::worker::Scheduler, WorkAssisting::task::Task>(mask, &inputs, &temps, &outputs);
+    let task = inner::create_task::<WorkAssisting::worker::Scheduler<1>, WorkAssisting::task::Task>(mask, &inputs, &temps, &outputs);
     WorkAssisting::worker::Workers::run(thread_count, task);
   })
   .open_mp(open_mp_enabled, "OpenMP", ChartLineStyle::OmpDynamic, "compact", Nesting::Nested, array_count, Some(size));

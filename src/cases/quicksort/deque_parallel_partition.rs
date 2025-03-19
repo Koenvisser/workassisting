@@ -164,7 +164,7 @@ fn run_parallel_partition(worker: Worker, data_box: Box<TaskParallelPartition>) 
 
   let pivot = task.input[0].load(Ordering::Relaxed);
   for idx in data.start_block .. own_end {
-    parallel_partition_chunk(task.input, task.output, pivot, &task.counters, idx);
+    parallel_partition_chunk::<1>(task.input, task.output, pivot, &task.counters, idx);
   }
 
   if task.reference_count.fetch_sub(1, Ordering::AcqRel) == 1 {

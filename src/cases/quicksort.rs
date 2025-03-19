@@ -35,7 +35,7 @@ fn run_on(open_mp_enabled: bool, size: usize) {
   )
   .parallel("Sequential partition", ChartLineStyle::SequentialPartition, |thread_count| {
     let pending_tasks = AtomicU64::new(1);
-    WorkAssisting::run(thread_count, create_task_reset(&array1, &pending_tasks, Kind::OnlyTaskParallel));
+    WorkAssisting::run(thread_count, create_task_reset::<crate::schedulers::workassisting::worker::Scheduler<1>, crate::schedulers::workassisting::task::Task>(&array1, &pending_tasks, Kind::OnlyTaskParallel));
     assert_eq!(pending_tasks.load(Ordering::Relaxed), 0);
     output(&array1)
   })
@@ -54,11 +54,13 @@ fn run_on(open_mp_enabled: bool, size: usize) {
     array2: &Box<[AtomicU32]>
   ) -> Benchmarker<u64>
   where
-    S: Scheduler
+    S: Scheduler,
+    [(); S::CHUNK_SIZE]: ,
+    [(); BLOCK_SIZE / S::CHUNK_SIZE]:
   {
     return benchmark.parallel(&S::get_name(), S::get_chart_line_style(), |thread_count| {
       let pending_tasks = AtomicU64::new(1);
-      S::Workers::run(thread_count, create_task_reset(array1, &pending_tasks, Kind::DataParallel(array2)));
+      S::Workers::run(thread_count, create_task_reset::<S, S::Task>(array1, &pending_tasks, Kind::DataParallel(array2)));
       output(array2)
     });
   }
@@ -75,9 +77,15 @@ pub fn random(mut seed: u64) -> u32 {
   (seed & 0xFFFFFFFF) as u32
 }
 
-fn create_task_reset<T:Task>(array: &[AtomicU32], pending_tasks: &AtomicU64, kind: Kind) -> T {
+fn create_task_reset<S, T>(array: &[AtomicU32], pending_tasks: &AtomicU64, kind: Kind) -> T 
+  where
+    S: Scheduler<Task = T>,
+    T: Task,
+    [(); S::CHUNK_SIZE]: ,
+    [(); BLOCK_SIZE / S::CHUNK_SIZE]:
+{
   let data = Reset{ array, pending_tasks, kind };
-  T::new_dataparallel(reset_run, reset_finish, data, ((array.len() + BLOCK_SIZE - 1) / BLOCK_SIZE) as u32)
+  T::new_dataparallel(reset_run, reset_finish, data, ((array.len() + {BLOCK_SIZE / S::CHUNK_SIZE} - 1) / {BLOCK_SIZE / S::CHUNK_SIZE}) as u32)
 }
 
 struct Reset<'a> {
@@ -102,7 +110,13 @@ fn reset_run<'a, 'b, 'c, T:Task>(_workers: &'a T::Workers<'b>, task: *const T::T
   });
 }
 
-fn reset_finish<'a, 'b, T:Task>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Reset>) {
+fn reset_finish<'a, 'b, S, T>(workers: &'a T::Workers<'b>, task: *mut T::TaskObject<Reset>) 
+  where
+    S: Scheduler<Task = T>,
+    T: Task,
+    [(); S::CHUNK_SIZE]: ,
+    [(); BLOCK_SIZE / S::CHUNK_SIZE]:
+{
   let data = unsafe { T::TaskObject::take_data(task) };
 
   match data.kind {
@@ -136,17 +150,20 @@ fn reference_sequential_single(array: &[AtomicU32]) -> u64 {
 pub struct Align<T>(T);
 
 #[inline(always)]
-pub fn parallel_partition_chunk(input: &[AtomicU32], output: &[AtomicU32], pivot: u32, counters: &AtomicU64, chunk_index: usize) {
+pub fn parallel_partition_chunk<const CHUNK_DIV: usize>(input: &[AtomicU32], output: &[AtomicU32], pivot: u32, counters: &AtomicU64, chunk_index: usize) 
+  where
+  [(); BLOCK_SIZE / CHUNK_DIV]:
+{
   // Loop starts at 1, as element 0 is the pivot.
-  let start = 1 + chunk_index as usize * BLOCK_SIZE;
+  let start = 1 + chunk_index as usize * {BLOCK_SIZE / CHUNK_DIV};
   assert_eq!(input.len(), output.len());
 
   // Treat the input as an immutable array. This thread, nor any other thread, will modify this part of the input
   // at this moment.
   let input1: &[u32] = unsafe { std::mem::transmute(input) };
 
-  specialize_if!(start + BLOCK_SIZE <= input.len(), BLOCK_SIZE, input.len() - start, |end| {
-    let mut values = Align([0; BLOCK_SIZE]);
+  specialize_if!(start + {BLOCK_SIZE / CHUNK_DIV} <= input.len(), {BLOCK_SIZE / CHUNK_DIV}, input.len() - start, |end| {
+    let mut values = Align([0; BLOCK_SIZE / CHUNK_DIV]);
     let mut left_count = 0;
     for (i, value) in input1[start .. start + end].iter().copied().enumerate() {
       let destination;

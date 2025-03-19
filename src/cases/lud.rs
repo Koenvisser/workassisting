@@ -29,7 +29,7 @@ pub fn run(openmp_enabled: bool) {
     result.0
   });
 
-  test_schedulers::<crate::schedulers::workassisting::worker::Scheduler>();
+  test_schedulers::<crate::schedulers::workassisting::worker::Scheduler<1>>();
 
   fn test_schedulers<S>()
     where S: Scheduler
@@ -106,8 +106,6 @@ fn run_on(openmp_enabled: bool, size: usize, matrix_count: usize) {
       S::Workers::run(thread_count, our::create_task::<S, S::Task>(&matrices, &pending));
     });
   }
-
-  
 }
 
 fn test<F: FnOnce(SquareMatrix) -> SquareMatrix>(name: &str, f: F) {
