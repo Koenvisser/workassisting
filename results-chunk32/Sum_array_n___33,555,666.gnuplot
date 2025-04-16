@@ -13,5 +13,5 @@ plot './results/Sum_array_n___33,555,666.dat' using 1:2 title "Rayon" pointsize 
   './results/Sum_array_n___33,555,666.dat' using 1:3 title "Static" pointsize 0.7 lw 1 pt 2 linecolor rgb "#5287C6" with linespoints, \
   './results/Sum_array_n___33,555,666.dat' using 1:4 title "Static (pinned)" pointsize 0.7 lw 1 pt 3 linecolor rgb "#24A793" with linespoints, \
   './results/Sum_array_n___33,555,666.dat' using 1:5 title "Work stealing" pointsize 0.7 lw 1 pt 6 linecolor rgb "#5B2182" with linespoints, \
-  './results/Sum_array_n___33,555,666.dat' using 1:6 title "Multi-atomics 64 32" pointsize 0.7 lw 2 pt 1 linecolor rgb "#64D000" with linespoints, \
-  './results/Sum_array_n___33,555,666.dat' using 1:7 title "WorkAssisting 32" pointsize 0.4 lw 2 pt 7 linecolor rgb "#800A35" with linespoints
+  './results/Sum_array_n___33,555,666.dat' using 1:6 title "Sharded SS 32" pointsize 0.7 lw 2 pt 1 linecolor rgb "#80D000" with linespoints, \
+  './results/Sum_array_n___33,555,666.dat' using 1:7 title "WorkAssisting 32" pointsize 0.4 lw 2 pt 7 linecolor rgb "#F40A35" with linespoints
